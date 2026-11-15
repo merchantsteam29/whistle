@@ -53,6 +53,7 @@ export function tick() { beep(1400, 0.03, 'square', 0.05); }
 export function say(text, delay = 0, opts = {}) {
   if (!sound.voice || !('speechSynthesis' in window)) return;
   setTimeout(() => {
+    sound.onSpeak?.(text.length * 70 + 900);
     const u = new SpeechSynthesisUtterance(text); u.rate = opts.rate ?? 1.08; u.pitch = opts.pitch ?? 1; u.volume = sound.volume;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   }, delay);

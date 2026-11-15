@@ -122,7 +122,8 @@ export class Game {
     this.rules = { ...DEFAULT_RULES, ...rules };
     this.refs = Array.from({ length: this.n }, () => new Ref({ stepsAllowed: this.rules.stepsAllowed, carry: this.rules.carry }));
     this.clock = this.rules.shotClock || 0; this.clockOn = false; this.laneT = Array(this.n).fill(0);
-    this.stats = Array.from({ length: this.n }, () => ({ pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, pf: 0, trv: 0, dd: 0, dr: 0, bestStreak: 0, clean: 0, fouledOut: false }));
+    this.stats = Array.from({ length: this.n }, () => ({ pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, pf: 0, trv: 0, dd: 0, dr: 0, bestStreak: 0, clean: 0, fouledOut: false, ast: 0, stl: 0, passes: 0 }));
+    this.lastPass = null; this.shotSince = false;
     this.score = [0, 0]; this.teamFouls = [0, 0];
     this.poss = null; this.possCand = null; this.possCandT = 0;
     this.ft = null; this.andOne = null; this.dead = -1; this.over = false; this.winner = null;
@@ -197,8 +198,15 @@ export class Game {
   }
 
   setPoss(i, t) {
-    if (this.poss != null && this.poss !== i) this.refs[this.poss].loseBall();
-    const changed = this.poss == null || this.teamOf[this.poss] !== this.teamOf[i];
+    const from = this.poss;
+    if (from != null && from !== i) this.refs[from].loseBall();
+    const changed = from == null || this.teamOf[from] !== this.teamOf[i];
+    // the ball went from one player to another without a shot: a pass (same team) or a steal (other team)
+    if (from != null && from !== i && !this.shotSince && this.t >= this.dead) {
+      if (!changed) { this.stats[from].passes++; this.lastPass = { from, to: i, t }; this.ev.push({ type: 'passTo', from, to: i, who: from, team: this.teamOf[i] }); }
+      else { this.stats[i].stl++; this.lastPass = null; this.ev.push({ type: 'steal', who: i, from, team: this.teamOf[i] }); }
+    } else if (changed) this.lastPass = null;
+    this.shotSince = false;
     this.poss = i; this.possCand = null;
     if (changed || !this.clockOn) this.resetClock(true);
     this.ev.push({ type: 'possession', who: i, team: this.teamOf[i], changed });
@@ -229,7 +237,7 @@ export class Game {
           const lx = threeLine.x * aspect, hx = ((hoop.x1 + hoop.x2) / 2) * aspect, side = Math.sign(lx - hx);
           three = (b.footX - lx) * side > 0;
         }
-        this.shots[i] = { three, t: this.t };
+        this.shots[i] = { three, t: this.t }; this.shotSince = true;
         this.resetClock(false); // a shot resets the clock; it starts again when someone has the ball
         s.fga++; if (three) s.tpa++;
         out.three = three;
@@ -246,7 +254,12 @@ export class Game {
   shotDone(i, made, auto = false) {
     const s = this.stats[i], sh = this.shots[i] || { three: false };
     const value = sh.three ? 3 : 2;
-    if (made) { s.fgm++; if (sh.three) s.tpm++; this.addPoints(i, value, sh.three ? 'three' : 'fg'); }
+    if (made) {
+      s.fgm++; if (sh.three) s.tpm++; this.addPoints(i, value, sh.three ? 'three' : 'fg');
+      // assist: a teammate passed to the scorer in the last few seconds
+      const lp = this.lastPass; if (lp && lp.to === i && this.t - lp.t < 5) { this.stats[lp.from].ast++; this.ev.push({ type: 'assist', who: lp.from, to: i, team: this.teamOf[i] }); }
+      this.lastPass = null;
+    }
     this.ev.push({ type: 'shotResult', who: i, team: this.teamOf[i], made, auto, three: sh.three, value });
     if (this.andOne && this.andOne.who === i) {
       const a = this.andOne; this.andOne = null;

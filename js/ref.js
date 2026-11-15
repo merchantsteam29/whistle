@@ -175,13 +175,13 @@ export class Ref {
       if (span < 0.08) return;
       const v = Math.hypot(f.p.X - o.X, f.p.Y - o.Y) / span / S;
       if (!f.moving) {
-        if (v > 1.0) { f.moving = true; f.calm = 0; f.liftPos = { X: o.X, Y: o.Y }; }
-      } else if (v < 0.45) {
+        if (v > (this.opts.footV || 1.0)) { f.moving = true; f.calm = 0; f.liftPos = { X: o.X, Y: o.Y }; }
+      } else if (v < 0.45 * (this.opts.footV || 1.0)) {
         f.calm += dt;
         if (f.calm >= 0.08) {
           f.moving = false;
           const d = Math.hypot(f.p.X - f.liftPos.X, f.p.Y - f.liftPos.Y) / S;
-          if (d > 0.22) this.landing(i, t, live);
+          if (d > (this.opts.stepDist || 0.22)) this.landing(i, t, live);
         }
       } else f.calm = 0;
     });
@@ -195,12 +195,12 @@ export class Ref {
     const allowed = this.opts.stepsAllowed;
     if (this.mode === 'moving') {
       if (this.firstFoot == null) this.firstFoot = foot;
-      if (this.steps > allowed) this.call('travel', `${this.steps} steps without a dribble`);
+      if (this.steps > allowed && !this.opts.noTravel) this.call('travel', `${this.steps} steps without a dribble`);
     } else {
       if (this.pivot == null) this.pivot = 1 - foot;
       else if (foot === this.pivot) {
         this.pivotSlips++;
-        if (this.pivotSlips > allowed - 2) this.call('travel', `Moved the pivot foot (${foot ? 'right' : 'left'})`);
+        if (this.pivotSlips > allowed - 2 && !this.opts.noTravel) this.call('travel', `Moved the pivot foot (${foot ? 'right' : 'left'})`);
       }
     }
   }

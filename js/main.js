@@ -10,6 +10,12 @@ import { Replay } from './replay.js';
 import { saveCourt, shotChartHTML } from './shotchart.js';
 import { buildReport, reportHTML, encodeReport, decodeReport } from './report.js';
 import { BoardHost, joinBoard } from './board.js';
+import { TrickRun, judge, TRICKS } from './tricks.js';
+import { CHAPTERS, COACH, careerOf, passed, advance } from './career.js';
+import { Calibrator } from './calib.js';
+import { isoWeek, weekDrills, leaguePoints, leagueBoard, newLeagueCode, cleanCode } from './league.js';
+import { VoiceCommands, voiceSupported } from './voicecmd.js';
+import { framesToVideo, saveBadCall, listBadCalls, deleteBadCall, download } from './badcalls.js';
 import * as P from './progress.js';
 import { analyzeShot, FORM_NAMES } from './form.js';
 import { Turns } from './turns.js';
@@ -86,10 +92,10 @@ function renderHome() {
   const card1 = (id, m, small) => {
     const pb = p?.bests?.[id];
     const right = m.game && p ? `<div class="pb">RECORD<em>${p.stats.wins}-${p.stats.games - p.stats.wins}</em></div>` : pb != null ? `<div class="pb">BEST<em>${pb}</em></div>` : '';
-    return `<button class="mode ${id === mode ? 'sel' : ''}" data-mode="${id}"><div class="ic">${svg(IC[id] ? id : { horse: 'target', plan: 'cal', team: 'game' }[id] || (m.drill ? 'dribble30' : 'free'))}</div><div><b>${m.name}</b>${small ? '' : `<span>${m.desc}</span>`}</div>${right}</button>`;
+    return `<button class="mode ${id === mode ? 'sel' : ''}" data-mode="${id}"><div class="ic">${svg(IC[id] ? id : { horse: 'target', plan: 'cal', team: 'game', tricks: 'bolt', career: 'trophy' }[id] || (m.drill ? 'dribble30' : 'free'))}</div><div><b>${m.name}</b>${small ? '' : `<span>${m.desc}</span>`}</div>${right}</button>`;
   };
   const E = Object.entries(P.MODES);
-  $('#modes').innerHTML = `<p class="mgroup">Play</p>${E.filter(([id, m]) => id === 'free' || m.game || m.turns).map(([id, m]) => card1(id, m)).join('')}
+  $('#modes').innerHTML = `<p class="mgroup">Play</p>${E.filter(([id, m]) => id === 'free' || m.game || m.turns || m.tricks || m.career).map(([id, m]) => card1(id, m)).join('')}
     <p class="mgroup">Drills</p><div class="drillgrid">${E.filter(([, m]) => m.drill).map(([id, m]) => card1(id, m, true)).join('')}</div>
     <p class="mgroup">Coach</p>${E.filter(([, m]) => m.plan || m.team).map(([id, m]) => card1(id, m)).join('')}`;
   const sel = P.MODES[mode];
@@ -105,7 +111,10 @@ $('#btnStart').onclick = () => {
   if (mode === 'game') { openGameSetup(); return; }
   if (mode === 'horse') { openTurns(); return; }
   if (mode === 'plan') { if (!P.current()) { openPlayers(); return; } openPlans(); return; }
-  if (mode === 'team') { openTeam(); return; }
+  if (mode === 'team') { openTeam(false); return; }
+  if (mode === 'tricks') { openTeam(true); return; }
+  if (mode === 'career') { if (!P.current()) { openPlayers(); return; } openCareer(); return; }
+  if (mode === 'calib') { if (!P.current()) { openPlayers(); return; } enterSession(); return; }
   if (!P.current()) { openPlayers(); return; }
   enterSession();
 };
@@ -163,6 +172,8 @@ $('#gGo').onclick = () => {
 
 // ---------- settings ----------
 function renderSettings() {
+  $('#setVoiceCmd').checked = !!cfg.voiceCmd;
+  const cp0 = P.current(); $('#calTxt').textContent = cp0?.calib ? `${cp0.name} was calibrated on ${new Date(cp0.calib.at).toLocaleDateString()} (step threshold ${cp0.calib.footV}, ball size ${cp0.calib.ballRR ?? 'auto'}). Run it again any time.` : 'A 1-minute setup (stand still, then dribble 5 times) that tunes step and ball detection to this player.';
   $('#setArena').checked = !!cfg.arena; $('#setGhost').value = cfg.ghost || 'pro'; $('#setSaver').checked = !!cfg.saver;
   if (cfg.offlineAt) $('#offTxt').textContent = `Ready offline since ${new Date(cfg.offlineAt).toLocaleDateString()}. Tap to refresh.`;
   $('#setSteps').value = String(cfg.stepsAllowed);
@@ -190,6 +201,10 @@ bindSetting('#setForm', 'formCoach', (el) => el.checked);
 bindSetting('#setArena', 'arena', (el) => el.checked);
 bindSetting('#setGhost', 'ghost', (el) => el.value);
 bindSetting('#setSaver', 'saver', (el) => el.checked);
+bindSetting('#setVoiceCmd', 'voiceCmd', (el) => el.checked);
+$('#setVoiceCmd').addEventListener('change', () => { if (cfg.voiceCmd) { if (!voiceSupported()) { toast('Voice commands need Chrome or Edge'); cfg.voiceCmd = false; $('#setVoiceCmd').checked = false; P.save(); } else vc.start(); } else vc.stop(); });
+$('#calBtn').onclick = () => { if (!P.current()) { openPlayers(); return; } mode = 'calib'; enterSession(); };
+$('#badBtn').onclick = openBadCalls;
 $('#offBtn').onclick = downloadOffline;
 $('#setPack').addEventListener('change', () => { $('#setVoiceDesc').textContent = PACKS[cfg.voicePack]?.desc || ''; });
 $('#packTry').onclick = () => { unlock(); preview(cfg.voicePack); };
@@ -204,6 +219,7 @@ function applySettings() {
   setPack(cfg.voicePack); ref.setOptions({ carry: cfg.carry });
   const cp = P.current(), lvl = cp ? P.levelOf(cp.xp).n : 1;
   sound.kind = allowed(WHISTLES, cp?.style?.whistle, lvl);
+  const cal = cp?.calib; ref.setOptions({ footV: cal?.footV || 1, stepDist: cal?.stepDist || 0.22 }); finder.ballRR = cal?.ballRR || 0.27;
   replay.on = !cfg.saver;
 }
 function hsvCss(c) { return `hsl(${c.h.toFixed(0)} ${(c.s * 100).toFixed(0)}% ${(c.v * 50).toFixed(0)}%)`; }
@@ -360,12 +376,17 @@ function process(now) {
       if (TEST && Q.has('trace')) { const b = ref.body, f = (v) => v == null ? '-' : v.toFixed(2); TRACE.push(`${f(t)} ball ${lastBall ? f(lastBall.x) + ',' + f(lastBall.y) + ' r' + lastBall.r.toFixed(3) + ' ' + lastBall.src : '-'} hands ${b ? b.hands.map((h) => h ? f(h.X / aspect) + ',' + f(h.Y) : 'x').join(' ') : 'nobody'} S ${f(ref.S)} near ${ref.near} held ${ref.held} | ${finder.dbg}`); }
       const m = P.MODES[session ? session.mode : 'free'];
       if (session && session.mode === 'slides30' && ref.body) session.drill.slides = slides.push(ref.body.hip.X, ref.S);
+      if (session?.tricks && lastPose && ref.S) { const m1 = session.tricks.body(Math.abs(lastPose[11].x - lastPose[12].x) * aspect, ref.S, t, ref.dribbling); if (m1) trickPop(m1); session.trickScore = session.tricks.score; }
+      if (calib) calibFrame(t);
+      if (session && !game && !turns) sideFrameTick(t);
       const limit = m.secs || session?.limit;
       if (session && limit && session.seconds >= limit && !endTimer) { session.seconds = limit; session.complete = true; whistle(0.7, 2); if (cfg.arena) buzzer(); call('time'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
       // battery saver: nobody in view for a minute = pause
       if (cfg.saver && !videoSrc) { if (lastPose) quietSince = 0; else if (!quietSince) quietSince = now; else if (now - quietSince > 60000) { quietSince = 0; $('#cPause').click(); toast('Paused to save battery: nobody in view'); } }
     }
     updateHUD();
+  } else if (phase === 'camlive') {
+    streamSide(aspect);
   } else if (phase === 'setup' || phase === 'count') {
     if (!isGame()) ref.update({ t, aspect, pose: lastPose, ball: lastBall, hoop: cfg.hoop }); // keeps feet / body scale warm
     updateSetup();
@@ -453,6 +474,10 @@ function drawOverlay() {
   if (isGame() && (cfg.lane || (tapMode === 'lane' && linePts.length))) {
     if (cfg.lane && tapMode !== 'lane') { g.fillStyle = 'rgba(61,155,255,.12)'; g.fillRect(cfg.lane.x1 * W, cfg.lane.y * H - H * 0.12, (cfg.lane.x2 - cfg.lane.x1) * W, H * 0.2); dline({ x: cfg.lane.x1, y: cfg.lane.y }, { x: cfg.lane.x2, y: cfg.lane.y }, 'rgba(61,155,255,.8)', true); }
     for (const q of tapMode === 'lane' ? linePts : []) { g.fillStyle = '#3d9bff'; g.beginPath(); g.arc(q.x * W, q.y * H, 6 * dpr, 0, Math.PI * 2); g.fill(); }
+  }
+  if (turns?.kind === 'world') {
+    const st = turns.state();
+    worldSpots().forEach((q, k) => { const cur = !st.done && k === st.spot; g.strokeStyle = cur ? '#ffc53d' : 'rgba(238,243,251,.5)'; g.lineWidth = (cur ? 5 : 2) * dpr; g.beginPath(); g.ellipse(q.x * W, q.y * H, 26 * dpr, 9 * dpr, 0, 0, Math.PI * 2); g.stroke(); });
   }
   if (turns?.spot) {
     const x = turns.spot.x * W, y = turns.spot.y * H;
@@ -611,6 +636,7 @@ function startLive() {
   if (cfg.arena) crowdOn();
   $('#cReplay').classList.toggle('hidden', !!cfg.saver);
   $('#cBoard').classList.remove('hidden');
+  $('#mic').classList.toggle('hidden', !vc.on);
   if (cfg.bounds) cfg.bounds.side = 0;
   liveBounds();
   if (videoSrc && !Q.get('src')) { video.currentTime = 0; video.play().catch(() => {}); }
@@ -623,6 +649,8 @@ function startLive() {
   if (mode === 'horse') { startTurns(); return; }
   session = P.newSession(mode); ref.reset(); slides.reset();
   if (stationLimit) { session.limit = stationLimit; }
+  if (session.mode === 'tricks') { session.tricks = new TrickRun(); }
+  if (session.mode === 'calib') { startCalib(); }
   if (session.mode === 'weak30') { const wh = P.weakHand(P.current()); session.weak = wh; toast(`Weak hand: use your ${wh ? 'RIGHT' : 'LEFT'} hand`, true); }
   ['#scoreboard', '#poss'].forEach((s) => $(s).classList.remove('hidden'));
   $('#cAddShot').classList.toggle('hidden', !!cfg.hoop && session.mode !== 'shoot10');
@@ -675,11 +703,15 @@ function closeAsk() { clearTimeout(askTimer); $('#ask').classList.add('hidden');
 // ---------- single-player events -> stats, XP, calls ----------
 function onEvent(e) {
   if (TEST) TLOG.push({ t: +video.currentTime.toFixed(2), ...e });
+  logRecent(e);
+  if (e.type === 'shotResult' && e.made == null && !turns && sideActive() && side.d.hoop) { clearTimeout(sideWait); sideWait = setTimeout(() => { sideWait = 0; askShot(); }, 3500); return; }
   if (turns) { turnEvent(e); return; }
   const s = session; if (!s) return;
   switch (e.type) {
     case 'dribble': {
       onDribble(s.drill, e, s.weak ?? 0);
+      if (s.tricks) { const m1 = s.tricks.dribble(e, curT); if (m1) trickPop(m1); s.trickScore = s.tricks.score; }
+      if (calib && calib.step === 'dribble') calib.addDribble(curT);
       s.dribbles++; s.bestStreak = Math.max(s.bestStreak, e.streak);
       P.addXP(s, 'dribbles', P.XP.dribble);
       const bonus = P.XP.streak[e.streak];
@@ -707,13 +739,13 @@ function onEvent(e) {
       s.makeRun = 0; lastCall = e;
       whistle(0.6);
       showCall('bad', e.title, `${e.why}<em>${e.signal} · ${e.tip}</em>`, 2600);
-      call(e.kind, null, null, 350); if (cfg.arena) groan(); lastCallTitle = e.title;
+      call(e.kind, null, null, 350); if (cfg.arena) groan(); lastCallTitle = e.title; if (s.tricks) s.tricks.violations++;
       showWave();
       break;
     }
   }
 }
-function showWave() { $('#cWave').classList.remove('hidden'); clearTimeout(waveTimer); waveTimer = setTimeout(() => $('#cWave').classList.add('hidden'), 9000); }
+function showWave() { ['#cWave', '#cBad'].forEach((q) => $(q).classList.remove('hidden')); clearTimeout(waveTimer); waveTimer = setTimeout(() => ['#cWave', '#cBad'].forEach((q) => $(q).classList.add('hidden')), 9000); }
 function made(fixing) {
   const s = session; if (!s) return;
   if (!lastShot) lastShot = { made: false, xp: 0 };
@@ -724,6 +756,7 @@ function made(fixing) {
   const lastShotRec = s.shotLog[s.shotLog.length - 1]; if (lastShotRec) lastShotRec.m = true;
   if (cfg.arena) cheer(s.makeRun >= 3 ? 3 : 1); celebrateNow(s.makeRun >= 3 ? 2 : 1);
   swish(); showCall('good', s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET', `+${xp} XP${s.makeRun >= 2 ? ` · ${s.makeRun} in a row` : ''}`, 1500);
+  if (s.tricks) { const m1 = s.tricks.made(false, curT); trickPop(m1); s.trickScore = s.tricks.score; }
   if (!fixing) { if (s.makeRun >= 3) call('onfire', s.makeRun); else call('make'); hl.keep(s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET!', playerLabel()); }
   updateFix(); checkShotDrill();
 }
@@ -764,7 +797,7 @@ function startGame() {
   updateHUD();
 }
 function slotPlayer(i) { const id = (mode === 'horse' ? cfg.troster : cfg.roster)[i]; return id ? P.players().find((p) => p.id === id) : null; }
-function slotName(i) { const p = slotPlayer(i); if (p) return p.name; if (mode === 'horse') return `Player ${i + 1}`; return `Guest ${teamOfSlot(i) ? 'A' : 'H'}${slotCount() === 4 ? (i % 2) + 1 : ''}`; }
+function slotName(i) { if (turns?.names?.[i]) return turns.names[i]; const p = slotPlayer(i); if (p) return p.name; if (mode === 'horse') return `Player ${i + 1}`; return `Guest ${teamOfSlot(i) ? 'A' : 'H'}${slotCount() === 4 ? (i % 2) + 1 : ''}`; }
 function slotLabel(i) { const p = slotPlayer(i); return p && p.num ? `#${p.num} ${p.name}` : slotName(i); }
 const teamName = (t) => (slotCount() === 2 ? slotName(t) : cfg.teams[t].name);
 const playerLabel = () => { const p = P.current(); return p ? (p.num ? `#${p.num} ` : '') + p.name : ''; };
@@ -785,7 +818,9 @@ function handleGame(evs) {
     if (TEST) TLOG.push({ t: +video.currentTime.toFixed(2), ...e });
     const nm = e.who != null ? esc(slotName(e.who)) : '';
     switch (e.type) {
-      case 'possession': if (e.changed) toast(`${teamName(e.team)} ball`); break;
+      case 'possession': if (e.changed && !e.steal) toast(`${teamName(e.team)} ball`); break;
+      case 'assist': toast(`Assist: ${slotName(e.who)}`, true); break;
+      case 'steal': toast(`Steal! ${slotName(e.who)}`, true); if (cfg.arena) cheer(2); break;
       case 'violation': lastCallTitle = e.title; if (cfg.arena) groan();
         whistle(0.6); showWave();
         queueCall('bad', e.title, `${nm} · ${esc(e.why)}<em>Ball to ${esc(teamName(1 - e.team))} · ${e.tip}</em>`, 2600, () => call(e.kind, null, null, 300));
@@ -915,6 +950,8 @@ function endSession(opts = {}) {
   hl.drop(); crowdOff(); $('#ghost').classList.add('hidden');
   if (plan && session && !opts.quit) { stationDone(); return; }
   if (teamRun && session && !opts.quit) { teamTurnDone(); return; }
+  if (calibDone) { calibDone = false; session = null; phase = 'off'; stopCamera(); go('sSettings'); return; }
+  if (careerRun && !opts.career) { careerEnd(opts); return; }
   if (plan) { const pl = plan; plan = null; stationLimit = 0; const s0 = session; session = null; if (s0 && s0.seconds > 5) pl.results.push({ step: pl.steps[pl.i], s: s0, res: P.finish(s0) }); phase = 'off'; stopCamera(); renderPlanSummary(pl); go('sSummary'); return; }
   if (teamRun) { const tr = teamRun; teamRun = null; session = null; phase = 'off'; stopCamera(); renderTeamSummary(tr); go('sSummary'); return; }
   if (turns) { const tn = turns; turns = null; phase = 'off'; stopCamera(); renderTurnsSummary(tn); go('sSummary'); return; }
@@ -922,6 +959,7 @@ function endSession(opts = {}) {
   const s = session; if (!s) return;
   session = null; phase = 'off';
   const res = P.finish(s);
+  if (cfg.league && weekDrills().includes(s.mode) && res?.drill?.score != null) postLeague(false);
   stopCamera();
   renderSummary(s, res);
   go('sSummary');
@@ -1004,18 +1042,18 @@ function renderGameSummary(gm) {
   }
   const row = (i) => {
     const st = gm.stats[i];
-    return `<tr><td><span class="dot" style="background:${teamColor(gm.teamOf[i])}"></span>${esc(slotName(i))}${st.fouledOut ? ' <span class="bonus">OUT</span>' : ''}</td><td><b>${st.pts}</b></td><td>${st.fgm}/${st.fga}</td><td>${st.tpm}/${st.tpa}</td><td>${st.ftm}/${st.fta}</td><td>${st.pf}</td><td>${st.trv + st.dd}</td><td>${st.dr}</td></tr>`;
+    return `<tr><td><span class="dot" style="background:${teamColor(gm.teamOf[i])}"></span>${esc(slotName(i))}${st.fouledOut ? ' <span class="bonus">OUT</span>' : ''}</td><td><b>${st.pts}</b></td><td>${st.fgm}/${st.fga}</td><td>${st.tpm}/${st.tpa}</td><td>${st.ftm}/${st.fta}</td><td>${st.ast || 0}</td><td>${st.stl || 0}</td><td>${st.pf}</td><td>${st.trv + st.dd + (st.to || 0)}</td><td>${st.dr}</td></tr>`;
   };
-  const tot = (t) => { const ids = [...Array(n).keys()].filter((i) => gm.teamOf[i] === t), S = (k) => ids.reduce((a, i) => a + gm.stats[i][k], 0); return `<tr class="tot"><td>${t ? 'AWAY' : 'HOME'}</td><td>${sc[t]}</td><td>${S('fgm')}/${S('fga')}</td><td>${S('tpm')}/${S('tpa')}</td><td>${S('ftm')}/${S('fta')}</td><td>${S('pf')}</td><td>${S('trv') + S('dd')}</td><td>${S('dr')}</td></tr>`; };
+  const tot = (t) => { const ids = [...Array(n).keys()].filter((i) => gm.teamOf[i] === t), S = (k) => ids.reduce((a, i) => a + gm.stats[i][k], 0); return `<tr class="tot"><td>${t ? 'AWAY' : 'HOME'}</td><td>${sc[t]}</td><td>${S('fgm')}/${S('fga')}</td><td>${S('tpm')}/${S('tpa')}</td><td>${S('ftm')}/${S('fta')}</td><td>${S('ast')}</td><td>${S('stl')}</td><td>${S('pf')}</td><td>${S('trv') + S('dd')}</td><td>${S('dr')}</td></tr>`; };
   const title = winner == null ? 'Tie game' : `${esc(teamName(winner))} win${n === 2 ? 's' : ''}`;
   $('#summary').innerHTML = `
     <div class="sumhead"><div class="k">${n === 2 ? '1 v 1' : '2 v 2'} · ${fmtTime(gameClock)}</div>
       <h2>${title}</h2>
       <div style="font:800 64px/1 var(--display);margin-top:6px"><span style="color:${teamColor(0)}">${sc[0]}</span> <span style="color:var(--faint)">–</span> <span style="color:${teamColor(1)}">${sc[1]}</span></div></div>
     <p class="label">Box score</p>
-    <div class="card scroll-x" style="padding:6px 10px;margin-bottom:16px"><table class="box"><tr><th>Player</th><th>PTS</th><th>FG</th><th>3PT</th><th>FT</th><th>PF</th><th>TO</th><th>DRB</th></tr>
+    <div class="card scroll-x" style="padding:6px 10px;margin-bottom:16px"><table class="box"><tr><th>Player</th><th>PTS</th><th>FG</th><th>3PT</th><th>FT</th><th>AST</th><th>STL</th><th>PF</th><th>TO</th><th>DRB</th></tr>
       ${[0, 1].map((t) => [...Array(n).keys()].filter((i) => gm.teamOf[i] === t).map(row).join('') + (n === 4 ? tot(t) : '')).join('')}</table>
-      <p style="color:var(--faint);font-size:12px;margin:8px 0 4px">PF personal fouls · TO travels + double dribbles · DRB dribbles</p></div>
+      <p style="color:var(--faint);font-size:12px;margin:8px 0 4px">AST assists · STL steals · PF personal fouls · TO violations · DRB dribbles</p></div>
     ${results.length ? `<p class="label">XP</p>${results.map((r, k) => playerCardHTML(r.res, r.res.after.n > r.res.before.n, 'gbar' + k, ` <span style="color:var(--orange)">+${r.s.xp} XP</span>${r.s.won ? ' <span class="pbflag">WIN</span>' : ''}`)).join('')}` : '<p style="color:var(--dim)">Guests don\'t earn XP. Pick saved players in Game setup to level up.</p>'}
     ${results.some((r) => r.res.earned.length) ? `<p class="label" style="margin-top:16px">New badges</p><div class="badges">${results.flatMap((r) => r.res.earned.map((b) => badgeHTML({ ...b, desc: `${esc(r.res.player.name)}: ${b.desc}` }, true, true))).join('')}</div>` : ''}
     ${clipsHTML()}
@@ -1147,7 +1185,9 @@ $('#tGo').onclick = () => {
   $('#mTurns').classList.remove('on'); enterSession();
 };
 function startTurns() {
-  turns = new Turns({ kind: TR.kind, players: TR.n, word: TR.word }); turnForm = {}; turnsT0 = performance.now();
+  const cr = careerRun && CHAPTERS[careerRun.ch];
+  turns = cr?.rival ? new Turns({ kind: cr.mode === 't21' ? 't21' : 'horse', players: 2, word: 'HORSE', ghosts: { 1: cr.rival.pct } }) : new Turns({ kind: TR.kind, players: TR.n, word: TR.word });
+  turns.names = cr?.rival ? [P.current()?.name || 'You', cr.rival.name] : null; turnForm = {}; turnsT0 = performance.now();
   ref.reset();
   ['#turnBoard', '#turnBanner', '#cAddShot'].forEach((q) => $(q).classList.remove('hidden'));
   turnUI(true);
@@ -1156,15 +1196,21 @@ let turnsT0 = 0;
 function turnUI(speak) {
   const st = turns.state();
   $('#turnBoard').innerHTML = Array.from({ length: turns.n }, (_, i) => {
-    const mid = turns.kind === 'horse' ? `<span>${[...turns.word].map((ch, k) => (k < turns.letters[i] ? ch : `<i>${ch}</i>`)).join('')}</span>` : `<span style="letter-spacing:.05em;color:${turns.out[i] ? 'var(--red)' : 'var(--green)'}">${turns.out[i] ? 'OUT' : 'IN'}</span>`;
+    const mid = turns.kind === 'horse' ? `<span>${[...turns.word].map((ch, k) => (k < turns.letters[i] ? ch : `<i>${ch}</i>`)).join('')}</span>`
+      : turns.kind === 't21' ? `<span style="color:var(--text);letter-spacing:.04em">${turns.score[i]}</span>`
+      : turns.kind === 'world' ? `<span style="letter-spacing:.1em;color:var(--orange)">${Array.from({ length: turns.spots }, (_, k) => (k < turns.pos[i] ? '●' : '<i>○</i>')).join('')}</span>`
+      : `<span style="letter-spacing:.05em;color:${turns.out[i] ? 'var(--red)' : 'var(--green)'}">${turns.out[i] ? 'OUT' : 'IN'}</span>`;
     return `<div class="tb-p ${st.who === i ? 'cur' : ''} ${turns.out[i] ? 'out' : ''}"><b>${esc(slotName(i))}</b>${mid}</div>`;
   }).join('');
   if (st.done) { $('#turnBanner').classList.add('hidden'); return; }
   const nm = slotName(st.who);
-  const what = st.role === 'set' ? 'Set the shot' : st.role === 'match' ? 'Match it' : `Round ${st.round}`;
-  const sub = st.role === 'set' ? 'Shoot from anywhere. Make it and everyone has to copy it.' : st.role === 'match' ? 'Shoot from the yellow spot.' : 'Everyone shoots from the same spot. Miss when someone made it and you are out.';
+  const what = st.role === 'set' ? 'Set the shot' : st.role === 'match' ? 'Match it' : st.role === 'long' ? `Long shot · ${st.score}` : st.role === 'tip' ? 'Tip-in for 1' : st.role === 'spot' ? `Spot ${st.spot + 1} of ${turns.spots}` : `Round ${st.round}`;
+  const sub = st.role === 'set' ? 'Shoot from anywhere. Make it and everyone has to copy it.' : st.role === 'match' ? 'Shoot from the yellow spot.'
+    : st.role === 'long' ? 'Worth 2 (3 behind the line). Make it to earn a tip-in. Exactly 21 wins; over drops you to 13.' : st.role === 'tip' ? 'Close shot worth 1. Make it and shoot long again.'
+    : st.role === 'spot' ? 'Make it from the glowing spot to move on. Miss and the next player goes.' : 'Everyone shoots from the same spot. Miss when someone made it and you are out.';
   $('#turnBanner').innerHTML = `${esc(nm)} · ${what}<small>${sub}</small>`;
-  if (speak) call(st.role === 'set' ? 'setshot' : st.role === 'match' ? 'match' : 'setshot', nm, null, 400);
+  if (speak && !st.ghost) call(st.role === 'match' ? 'match' : 'setshot', nm, null, 400);
+  if (st.ghost) ghostTurn(st);
 }
 function feetSpot() {
   const lm = lastPose; if (!lm || !lm[27] || !lm[28]) return null;
@@ -1180,13 +1226,17 @@ function turnEvent(e) {
     if (e.made == null) askShot(); else turnShot(e.made);
   }
 }
-function turnShot(made) {
+function turnShot(made, extra) {
+  if (!extra && turns.kind === 't21') extra = { three: isThreeSpot(turnShotSpot || feetSpot()) };
   const who = turns.state().who, nm = slotName(who);
   const tl = turnShots[who]?.[turnShots[who].length - 1]; if (tl && made) tl.m = true;
   if (made) { if (cfg.arena) cheer(1); celebrateNow(1); } else if (cfg.arena) groan();
   if (made) { swish(); hl.keep('BUCKET!', nm); } else if (hl.why === 'shot') hl.drop();
   let speak = true;
-  for (const e of turns.shot(made, turnShotSpot || feetSpot())) {
+  for (const e of turns.shot(made, turnShotSpot || feetSpot(), extra || {})) {
+    if (e.type === 'points') toast(`${slotName(e.who)}: +${e.pts} (${e.total})`, true);
+    if (e.type === 'bust') { showCall('bad', 'BUST', `${esc(slotName(e.who))} went over 21 and drops to 13`, 1800); speak = false; }
+    if (e.type === 'advance') toast(`${slotName(e.who)}: spot ${e.pos} ✓`, true);
     if (e.type === 'set') { showCall('good', 'SHOT SET', `${esc(nm)} made it. Everyone has to match it.`, 1600); call('make'); speak = false; }
     else if (e.type === 'shotDone' && made && turns.kind !== 'horse') { showCall('good', 'BUCKET', esc(nm), 1100); }
     else if (e.type === 'letter') { whistle(0.3); showCall('bad', e.letters, `${esc(slotName(e.who))} missed the match`, 1800); call('letter', slotName(e.who), e.letters); speak = false; }
@@ -1211,10 +1261,10 @@ function renderTurnsSummary(tn) {
     results.push({ i, s, res: P.finish(s, pl.id) });
   }
   $('#summary').innerHTML = `
-    <div class="sumhead"><div class="k">${tn.kind === 'horse' ? tn.word : 'Knockout'} · ${tn.n} players · ${fmtTime(secs)}</div>
+    <div class="sumhead"><div class="k">${{ horse: tn.word, t21: '21', world: 'Around the World', knockout: 'Knockout' }[tn.kind]} · ${tn.n} players · ${fmtTime(secs)}</div>
       <h2>${tn.winner != null ? esc(slotName(tn.winner)) + ' wins' : 'Game over'}</h2></div>
     <div class="card scroll-x" style="padding:6px 10px;margin-bottom:16px"><table class="box"><tr><th>Player</th><th>Makes</th><th>Shots</th><th>${tn.kind === 'horse' ? 'Letters' : 'Result'}</th></tr>
-      ${Array.from({ length: tn.n }, (_, i) => `<tr><td>${esc(slotName(i))}${tn.winner === i ? ' <span class="pbflag">WIN</span>' : ''}</td><td>${tn.makes[i]}</td><td>${tn.shots[i]}</td><td>${tn.kind === 'horse' ? (tn.word.slice(0, tn.letters[i]) || '–') : tn.out[i] ? 'Out' : 'Last standing'}</td></tr>`).join('')}</table></div>
+      ${Array.from({ length: tn.n }, (_, i) => `<tr><td>${esc(slotName(i))}${tn.winner === i ? ' <span class="pbflag">WIN</span>' : ''}</td><td>${tn.makes[i]}</td><td>${tn.shots[i]}</td><td>${tn.kind === 'horse' ? (tn.word.slice(0, tn.letters[i]) || '–') : tn.kind === 't21' ? tn.score[i] + ' pts' : tn.kind === 'world' ? tn.pos[i] + ' / ' + tn.spots + ' spots' : tn.out[i] ? 'Out' : 'Last standing'}</td></tr>`).join('')}</table></div>
     ${results.length ? `<p class="label">XP</p>${results.map((r, k) => playerCardHTML(r.res, r.res.after.n > r.res.before.n, 'tbar' + k, ` <span style="color:var(--orange)">+${r.s.xp} XP</span>`)).join('')}` : '<p style="color:var(--dim)">Guests don\'t earn XP. Pick saved players to level up.</p>'}
     ${results.some((r) => r.res.earned.length) ? `<p class="label" style="margin-top:16px">New badges</p><div class="badges">${results.flatMap((r) => r.res.earned.map((b) => badgeHTML({ ...b, desc: `${esc(r.res.player.name)}: ${b.desc}` }, true, true))).join('')}</div>` : ''}
     ${clipsHTML()}
@@ -1241,7 +1291,7 @@ async function downloadOffline() {
   const M = 'https://storage.googleapis.com/mediapipe-models/';
   const urls = [V + '/vision_bundle.mjs', V + '/wasm/vision_wasm_internal.js', V + '/wasm/vision_wasm_internal.wasm', V + '/wasm/vision_wasm_nosimd_internal.js', V + '/wasm/vision_wasm_nosimd_internal.wasm',
     M + 'pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', M + 'pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
-    'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', ...['js/main.js', 'js/ref.js', 'js/ball.js', 'js/pose.js', 'js/game.js', 'js/form.js', 'js/turns.js', 'js/drills.js', 'js/styles.js', 'js/replay.js', 'js/shotchart.js', 'js/report.js', 'js/board.js', 'js/voice.js', 'js/audio.js', 'js/highlights.js', 'js/dashboard.js', 'js/progress.js', 'sync.js', 'install.js', 'index.html']];
+    'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', ...['js/main.js', 'js/ref.js', 'js/ball.js', 'js/pose.js', 'js/game.js', 'js/form.js', 'js/turns.js', 'js/drills.js', 'js/styles.js', 'js/replay.js', 'js/shotchart.js', 'js/report.js', 'js/board.js', 'js/voice.js', 'js/audio.js', 'js/highlights.js', 'js/dashboard.js', 'js/progress.js', 'js/tricks.js', 'js/career.js', 'js/calib.js', 'js/league.js', 'js/voicecmd.js', 'js/badcalls.js', 'sync.js', 'install.js', 'index.html']];
   if (cfg.aiBall) urls.push(M + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite');
   const btn = $('#offBtn'), txt = $('#offTxt'); btn.disabled = true;
   let ok = 0, bytes = 0;
@@ -1297,8 +1347,12 @@ function renderPlanSummary(pl) {
 // ---------- team mode ----------
 let teamRun = null;
 const TM = (cfg.teamMode ||= { kids: [], drill: 'dribble30', rounds: 1 });
-function openTeam() {
+let teamTricks = false;
+function openTeam(tricks) {
+  teamTricks = !!tricks;
   const players = P.players();
+  $('#mTeam h2').textContent = tricks ? 'Trick Contest' : 'Team mode';
+  $('#teamDrill').closest('.field').classList.toggle('hidden', !!tricks);
   $('#teamKids').innerHTML = players.map((p) => `<label><input type="checkbox" value="${p.id}" ${TM.kids.includes(p.id) ? 'checked' : ''}>${esc(p.name)}${p.num ? ' #' + esc(p.num) : ''}</label>`).join('') || '<p style="color:var(--dim)">Add players first.</p>';
   $('#teamDrill').innerHTML = Object.entries(P.MODES).filter(([, m]) => m.drill).map(([id, m]) => `<option value="${id}" ${TM.drill === id ? 'selected' : ''}>${m.name}</option>`).join('');
   document.querySelectorAll('#teamRounds button').forEach((b) => b.classList.toggle('on', +b.dataset.v === TM.rounds));
@@ -1311,22 +1365,25 @@ $('#teamAdd').onclick = () => { $('#mTeam').classList.remove('on'); openPlayers(
 $('#mTeamClose').onclick = () => $('#mTeam').classList.remove('on');
 $('#teamGo').onclick = () => {
   const kids = TM.kids.filter((id) => P.players().some((p) => p.id === id));
-  if (kids.length < 2) { toast('Pick at least 2 players'); return; }
+  if (kids.length < (teamTricks ? 1 : 2)) { toast(teamTricks ? 'Pick at least 1 player' : 'Pick at least 2 players'); return; }
   $('#mTeam').classList.remove('on');
   const queue = []; for (let r = 0; r < TM.rounds; r++) for (const k of kids) queue.push(k);
-  teamRun = { queue, i: 0, drill: TM.drill, results: [] };
-  mode = TM.drill; P.select(queue[0]); enterSession();
+  teamRun = { queue, i: 0, drill: teamTricks ? 'tricks' : TM.drill, results: [] };
+  mode = teamRun.drill; P.select(queue[0]); enterSession();
 };
 function teamTurnDone() {
   const s0 = session; session = null; phase = 'off';
+  if (s0.tricks) s0.cards = judge(s0.tricks, 30, teamRun.i * 7919 + 1);
   const res = P.finish(s0, teamRun.queue[teamRun.i]);
-  teamRun.results.push({ pid: teamRun.queue[teamRun.i], score: res?.drill?.score ?? null, xp: s0.xp, best: res?.drill?.isBest });
+  teamRun.results.push({ pid: teamRun.queue[teamRun.i], score: res?.drill?.score ?? null, xp: s0.xp, best: res?.drill?.isBest, cards: s0.cards, moves: s0.tricks?.moves.length });
+  if (s0.cards) { showCall('info', s0.cards.join('  ·  '), 'The judges score that run', 2400); call('make'); }
   teamRun.i++;
   if (teamRun.i >= teamRun.queue.length) { endSession({ quit: true }); return; }
   const next = P.players().find((p) => p.id === teamRun.queue[teamRun.i]); P.select(next.id); applySettings();
   upNext(`Turn ${teamRun.i + 1} of ${teamRun.queue.length}`, `Up next: ${next.num ? '#' + next.num + ' ' : ''}${next.name}`, P.MODES[teamRun.drill].desc, 10, () => startLive());
 }
 function renderTeamSummary(tr) {
+  if (tr.drill === 'tricks') return renderTrickSummary(tr);
   const by = {}; for (const r of tr.results) { const b = (by[r.pid] ||= { pid: r.pid, best: null, turns: 0, xp: 0 }); b.turns++; b.xp += r.xp; if (r.score != null) b.best = Math.max(b.best ?? -1, r.score); }
   const rows = Object.values(by).sort((a, b) => (b.best ?? -1) - (a.best ?? -1));
   const name = (id) => P.players().find((p) => p.id === id)?.name || '?';
@@ -1367,6 +1424,7 @@ const sharedReport = Q.get('report') ? decodeReport(Q.get('report')) : null;
 
 // ---------- second screen scoreboard ----------
 const board = new BoardHost();
+board.onData = (m) => onBoardData(m);
 $('#cBoard').onclick = async () => {
   const w = document.createElement('div'); w.className = 'modal on';
   w.innerHTML = `<div class="card" style="width:min(420px,100%);text-align:center"><h2 style="font:800 26px var(--display);letter-spacing:.06em;margin:0 0 8px">SCOREBOARD SCREEN</h2><p id="bdTxt" style="color:var(--dim)">Opening…</p><div class="row" style="margin-top:12px"><button class="btn" data-x>Close</button></div></div>`;
@@ -1374,7 +1432,8 @@ $('#cBoard').onclick = async () => {
   w.addEventListener('click', (e) => { if (e.target === w || e.target.closest('[data-x]')) w.remove(); });
   try {
     const code = await board.start(), link = `${location.origin}${location.pathname}?board=${code}`;
-    w.querySelector('#bdTxt').innerHTML = `On another phone or tablet, open:<br><b style="color:var(--text);word-break:break-all">${esc(link)}</b><br><br>or open WHISTLE there and go to <b>?board=${code}</b><div style="font:800 64px/1 var(--display);color:var(--orange);margin-top:12px;letter-spacing:.1em">${code}</div>`;
+    const base = `${location.origin}${location.pathname}`;
+    w.querySelector('#bdTxt').innerHTML = `On another phone or tablet, open:<br><b style="color:var(--text);word-break:break-all">${esc(link)}</b><br><br><b>Remote control</b> (big buttons): <span style="word-break:break-all">${esc(base)}?remote=${code}</span><br><b>Side camera</b> (a 2nd phone filming from the side): <span style="word-break:break-all">${esc(base)}?cam=${code}</span><div style="font:800 64px/1 var(--display);color:var(--orange);margin-top:12px;letter-spacing:.1em">${code}</div>`;
     sendBoard();
   } catch (e) { w.querySelector('#bdTxt').textContent = 'Could not open the scoreboard: ' + e.message + '. Check the internet connection.'; }
 };
@@ -1408,9 +1467,231 @@ function boardView(code) {
   }, (msg) => { const el = $('#bvStatus'); if (el) el.textContent = msg; else if (msg) bv.insertAdjacentHTML('beforeend', `<p style="color:var(--dim)" id="bvStatus">${esc(msg)}</p>`); }).catch((e) => { bv.insertAdjacentHTML('beforeend', `<p>Could not connect: ${esc(e.message)}</p>`); });
 }
 
+// ---------- trick contest ----------
+function trickPop(m) {
+  const el = document.createElement('div'); el.className = 'trickpop';
+  el.innerHTML = `${esc(TRICKS[m.kind].name.toUpperCase())}<small>+${m.pts}${m.combo ? ` · combo ×${1 + Math.min(m.combo, 4) * 0.5}` : ''}</small>`;
+  $('#sSession').appendChild(el); setTimeout(() => el.remove(), 1000);
+  if (m.pts >= 4 && cfg.arena) cheer(2);
+}
+function renderTrickSummary(tr) {
+  const name = (id) => P.players().find((p) => p.id === id)?.name || '?';
+  const rows = tr.results.slice().sort((a, b) => (b.cards || []).reduce((x, y) => x + y, 0) - (a.cards || []).reduce((x, y) => x + y, 0));
+  $('#summary').innerHTML = `<div class="sumhead"><div class="k">Trick Contest</div><h2>${rows[0] ? esc(name(rows[0].pid)) + ' wins' : 'Results'}</h2></div>
+    ${rows.map((r, k) => `<div class="card" style="margin-bottom:10px;text-align:center"><p class="label">${k + 1}. ${esc(name(r.pid))} · ${r.score ?? 0} pts · ${r.moves || 0} moves</p><div class="cards">${(r.cards || [0, 0, 0]).map((c) => `<div>${c}</div>`).join('')}</div></div>`).join('')}
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn primary" id="again">Another round</button></div>`;
+  $('#again').onclick = () => openTeam(true);
+  celebrateNow(2);
+}
+
+// ---------- calibration wizard ----------
+let calib = null, calibDone = false;
+function startCalib() {
+  calib = new Calibrator(); calib.step = 'still'; calib.t0 = null;
+  $('#turnBanner').classList.remove('hidden'); $('#turnBanner').innerHTML = 'Stand still<small>Feet planted, ball in your hands, for 3 seconds</small>';
+  call('setshot', 'Stand still', null, 200);
+}
+function calibFrame(t) {
+  const b = ref.body; if (!b) return;
+  calib.t0 ??= t;
+  if (calib.step === 'still') {
+    calib.addStill(b.feet, ref.S, t); if (lastBall) calib.addBall(lastBall, ref.S);
+    if (t - calib.t0 > 3) { calib.step = 'dribble'; calib.t1 = t; $('#turnBanner').innerHTML = 'Now dribble 5 times<small>Your normal dribble, standing in place</small>'; say('Now dribble five times'); }
+  } else if (calib.step === 'dribble') {
+    if (lastBall) calib.addBall(lastBall, ref.S);
+    $('#turnBanner').querySelector('small') && ($('#turnBanner').querySelector('small').textContent = `${calib.dribbles.length} of 5`);
+    if (calib.dribbles.length >= 5 || t - calib.t1 > 25) finishCalib();
+  }
+}
+function finishCalib() {
+  const r = calib.result(), p0 = P.current(); calib = null;
+  if (p0) { p0.calib = r; P.save(); applySettings(); }
+  $('#turnBanner').classList.add('hidden'); whistle(0.3); say('Calibrated');
+  coach('Calibration', 'All set!', `WHISTLE is tuned to ${esc(p0?.name || 'you')}: step threshold ${r.footV}${r.ballRR ? `, ball size ${r.ballRR}` : ''}${r.drPeriod ? `, a dribble every ${r.drPeriod} s` : ''}. Calls should feel fairer now.`, 'Done', () => { calibDone = true; endSession({ quit: true }); });
+}
+
+// ---------- career ----------
+let careerRun = null;
+function openCareer() {
+  const pl = P.current(), c = careerOf(pl);
+  $('#careerList').innerHTML = CHAPTERS.map((ch, k) => `<div class="chap ${k < c.ch || c.done ? 'done' : k === c.ch ? 'cur' : 'lock'}"><div class="n">${k < c.ch || c.done ? '✓' : k + 1}</div><div><b>${esc(ch.title)}</b><span>${ch.rival ? `Beat ${esc(ch.rival.name)} at ${ch.mode === 't21' ? '21' : 'HORSE'}` : `${ch.target} ${esc(P.MODES[ch.mode].unit || '')} in ${esc(P.MODES[ch.mode].name)}`}</span></div></div>`).join('');
+  $('#careerGo').textContent = c.done ? 'Replay the championship' : `Play chapter ${c.ch + 1}: ${CHAPTERS[c.ch].title}`;
+  $('#mCareer').classList.add('on');
+}
+$('#mCareerClose').onclick = () => $('#mCareer').classList.remove('on');
+$('#careerGo').onclick = () => { $('#mCareer').classList.remove('on'); startChapter(careerOf(P.current()).ch); };
+function startChapter(k) {
+  const ch = CHAPTERS[k]; careerRun = { ch: k };
+  if (ch.rival) cfg.troster = [P.current()?.id || null, null];
+  mode = ch.rival ? 'horse' : ch.mode; stationLimit = 0;
+  enterSession().then?.(() => {});
+  setTimeout(() => coach(COACH, ch.title, esc(ch.intro), "Let's go"), 600);
+  say(ch.intro, 900, { rate: 1, pitch: 0.95 });
+}
+function coach(who, title, html, btn, then) {
+  const el = $('#coachCard');
+  el.innerHTML = `<div><div class="who">${esc(who)}</div><h2>${esc(title)}</h2><p>${html}</p><button class="btn primary" id="coachOk">${esc(btn)}</button></div>`;
+  el.classList.remove('hidden'); $('#coachOk').onclick = () => { el.classList.add('hidden'); then?.(); };
+}
+function careerEnd(opts) {
+  const run = careerRun; careerRun = null;
+  const pl = P.current(), ch = CHAPTERS[run.ch];
+  let ok = false;
+  if (turns) ok = turns.winner === 0;
+  else if (session) { const m = P.MODES[session.mode]; ok = !opts.quit && session.complete && passed(ch, { score: m.score ? m.score(session) : null }); }
+  const wasDone = careerOf(pl).done;
+  if (ok && run.ch === careerOf(pl).ch && !wasDone) { advance(pl); P.save(); }
+  endSession({ ...opts, career: true });
+  const banner = ok ? `<div class="lvlup" style="border-color:var(--green);color:var(--green);background:#0d2a1d">Chapter ${run.ch + 1} passed! ${esc(ch.win)}</div>` : `<div class="lvlup">Not this time. ${esc(COACH)}: "Shake it off. Run it back."</div>`;
+  $('#summary').insertAdjacentHTML('afterbegin', banner);
+  const c = careerOf(pl);
+  $('#summary').insertAdjacentHTML('beforeend', `<div class="row" style="margin-top:10px"><button class="btn primary" id="careerNext">${ok ? (c.done && run.ch === CHAPTERS.length - 1 ? 'Career complete: replay the final' : `Next: ${esc(CHAPTERS[c.ch].title)}`) : 'Try again'}</button></div>`);
+  $('#careerNext').onclick = () => startChapter(ok ? c.ch : run.ch);
+  if (ok && c.done && run.ch === CHAPTERS.length - 1) { celebrateNow(3); say(ch.win, 600, { rate: 1, pitch: 0.95 }); }
+}
+// the rival takes their shot after a moment
+function ghostTurn(st) {
+  const pct = turns.ghosts[st.who], nm = slotName(st.who);
+  clearTimeout(ghostTurn.t);
+  ghostTurn.t = setTimeout(() => {
+    if (!turns || turns.winner != null || turns.state().who !== st.who) return;
+    const made = Math.random() < (st.role === 'tip' ? pct + 0.25 : pct), three = turns.kind === 't21' && st.role === 'long' && Math.random() < 0.25;
+    showCall(made ? 'good' : 'info', made ? `${nm.toUpperCase()} SCORES` : `${nm.toUpperCase()} MISSES`, three ? 'From deep!' : '', 1300);
+    turnShot(made, { three });
+  }, 2600);
+}
+function isThreeSpot(spot) {
+  const tl = cfg.threeLine, h = cfg.hoop; if (!spot || !tl || !h) return false;
+  return (spot.x - tl.x) * Math.sign(tl.x - (h.x1 + h.x2) / 2) > 0;
+}
+const worldSpots = () => cfg.worldSpots || [0.14, 0.32, 0.5, 0.68, 0.86].map((x) => ({ x, y: 0.9 }));
+
+// ---------- bad call reports ----------
+const recent = [];
+function logRecent(e) { recent.push({ t: +(curT || 0).toFixed(2), type: e.type, kind: e.kind, why: e.why, made: e.made, streak: e.streak }); if (recent.length > 40) recent.shift(); }
+$('#cBad').onclick = async () => {
+  const frames = replay.frames.slice(); if (!frames.length) { toast('Nothing recorded to save'); return; }
+  replay.frozen = true; toast('Saving the clip…');
+  try {
+    const clip = await framesToVideo(frames);
+    await saveBadCall({ at: Date.now(), title: lastCallTitle || 'Call', mode: session?.mode || (game ? 'game' : turns ? 'turns' : ''), clip,
+      data: { version: '1.5', events: recent.slice(), settings: { stepsAllowed: cfg.stepsAllowed, quality: cfg.quality, sensitivity: cfg.sensitivity, carry: cfg.carry }, calib: P.current()?.calib || null, ball: lastBall, ua: navigator.userAgent } });
+    toast('Saved. Find it in Settings → Bad call reports', true);
+  } catch (err) { toast('Could not save: ' + err.message); }
+  replay.frozen = false; ['#cWave', '#cBad'].forEach((q) => $(q).classList.add('hidden'));
+};
+async function openBadCalls() {
+  const list = (await listBadCalls()).sort((a, b) => b.at - a.at);
+  $('#mListTitle').textContent = 'Bad call reports';
+  $('#mListBody').innerHTML = list.length ? `<p style="color:var(--dim);margin-top:0">Each has the replay clip and what the ref saw. Download them and send them to whoever tunes WHISTLE.</p><div style="display:grid;gap:8px">${list.map((b) => `<div class="pitem" style="justify-content:space-between"><div><b>${esc(b.title)}</b><span>${new Date(b.at).toLocaleString()} · ${esc(b.mode)}</span></div><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-dl="${b.id}">Download</button><button class="btn sm ghost danger" data-del="${b.id}">Delete</button></div></div>`).join('')}</div>` : '<p style="color:var(--dim)">No reports yet. After a wrong call, tap "Bad call" next to "No call".</p>';
+  $('#mList').classList.add('on');
+  document.querySelectorAll('[data-dl]').forEach((b) => b.onclick = () => { const r = list.find((x) => x.id === b.dataset.dl); if (r.clip) download(r.clip, `whistle-badcall-${r.id}.webm`); download(new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' }), `whistle-badcall-${r.id}.json`); });
+  document.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { await deleteBadCall(b.dataset.del); openBadCalls(); });
+}
+$('#mListClose').onclick = () => $('#mList').classList.remove('on');
+
+// ---------- voice commands + remote control (same commands) ----------
+const vc = new VoiceCommands((c) => handleCmd(c), (state, c) => {
+  const m = $('#mic'); m.classList.toggle('on', state === 'listening' || state === 'heard');
+  if (state === 'heard') toast(`Heard: "${c}"`); if (state === 'denied') toast('Microphone blocked: allow it in the address bar');
+});
+sound.onSpeak = (ms) => vc.mute(ms);
+const vis = (q) => { const el = $(q); return el && !el.classList.contains('hidden'); };
+function handleCmd(c) {
+  if (c === 'start') { if (vis('#nextUp')) $('#nuGo')?.click(); else if (phase === 'setup') $('#btnGo').click(); else if (phase === 'paused') $('#cPause').click(); }
+  else if (c === 'pause') { if (phase === 'live') $('#cPause').click(); }
+  else if (c === 'resume') { if (phase === 'paused') $('#cPause').click(); }
+  else if (c === 'nocall') { if (vis('#cWave')) $('#cWave').click(); }
+  else if (c === 'bad') { if (vis('#cBad')) $('#cBad').click(); }
+  else if (c === 'replay') { if (phase === 'live' || phase === 'paused') $('#cReplay').click(); }
+  else if (c === 'next') { if (vis('#nextUp')) $('#nuGo')?.click(); else if (plan && session) { session.complete = true; endSession(); } }
+  else if (c === 'made' || c === 'missed') { if (vis('#ask')) answer(c === 'made'); else if (turns && phase === 'live') turnShot(c === 'made'); else if (session && phase === 'live') { onEvent({ type: 'shot', manual: true }); c === 'made' ? made(false) : missed(); } }
+  else if (c === 'end') { if (session || game || turns) $('#cEnd').click(); }
+  else if (/^[ha][123]$/.test(c) && game) handleGame(game.manualPoints(c[0] === 'h' ? 0 : 1, +c[1]));
+  else if (/^f[ha]$/.test(c) && game) handleGame(game.manualFoul(c[1] === 'h' ? 0 : 1));
+}
+function remoteView(code) {
+  document.querySelectorAll('.screen').forEach((x) => x.classList.toggle('on', x.id === 'sRemote'));
+  const el = $('#remote');
+  const btn = (c, label, cls = '') => `<button class="btn ${cls}" data-c="${c}">${label}</button>`;
+  el.innerHTML = `<div class="score" id="rmScore">Connecting…</div>
+    <div class="grid">${btn('pause', 'Pause')}${btn('resume', 'Resume')}${btn('replay', 'Replay')}${btn('nocall', 'No call', 'danger')}${btn('made', 'Made it', 'primary')}${btn('missed', 'Missed')}</div>
+    <p class="label" style="margin:6px 0 0">Game</p><div class="grid">${btn('h1', 'Home +1')}${btn('h2', 'Home +2')}${btn('h3', 'Home +3')}${btn('a1', 'Away +1')}${btn('a2', 'Away +2')}${btn('a3', 'Away +3')}${btn('fh', 'Foul Home')}${btn('fa', 'Foul Away')}${btn('next', 'Next')}</div>
+    ${btn('start', 'Start / Tip off', 'primary big')}${btn('end', 'End session', 'end')}`;
+  joinBoard(code, (m) => {
+    if (m.t !== 'state') return; const st = m.st;
+    $('#rmScore').textContent = st.kind === 'game' ? st.teams.map((t) => `${t.name} ${t.score}`).join('  –  ') : st.kind === 'solo' ? st.title : st.title || 'WHISTLE';
+  }, (msg) => { if (msg) $('#rmScore').textContent = msg; }).then((send) => {
+    el.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { send({ t: 'cmd', c: b.dataset.c }); b.animate([{ transform: 'scale(.94)' }, { transform: 'none' }], 150); });
+  });
+}
+
+// ---------- side camera ----------
+let side = null, sideWait = 0, sideRef = new Ref({ stepsAllowed: cfg.stepsAllowed });
+const sideActive = () => side && performance.now() - side.at < 600 && side.d.lm;
+function sideFrameTick(t) {
+  const on = !!sideActive();
+  ref.setOptions({ noTravel: on }); // the side view sees steps better: it makes the travel calls
+  if (!on || !session) return;
+  for (const e of sideRef.update({ t, aspect: side.d.aspect, pose: side.d.lm, ball: side.d.ball, hoop: side.d.hoop })) {
+    if (e.type === 'violation' && e.kind === 'travel') onEvent({ ...e, why: e.why + ' (side camera)' });
+    if (e.type === 'shotResult' && e.made != null && sideWait) { clearTimeout(sideWait); sideWait = 0; e.made ? made(false) : missed(); }
+  }
+}
+function onBoardData(m) {
+  if (m.t === 'cmd') handleCmd(m.c);
+  else if (m.t === 'cam') { side = { d: m.d, at: performance.now() }; }
+}
+let camSend = null, camLast = 0;
+async function sideCamView(code) {
+  mode = 'free'; await enterSession();
+  $('#chkBodyTitle').textContent = 'Side camera: player in view';
+  $('#btnGo').textContent = 'Start sending';
+  try { camSend = await joinBoard(code, () => {}, (msg) => { if (msg) toast(msg); }); } catch (e) { toast('Could not connect: ' + e.message); }
+  $('#btnGo').onclick = () => { phase = 'camlive'; $('#setup').classList.add('hidden'); $('#cFlip').classList.add('hidden'); toast('Side camera is live. Leave this phone filming from the side.', true); };
+}
+function streamSide(aspect) {
+  const now = performance.now(); if (!camSend || now - camLast < 66) return; camLast = now;
+  const lm = lastPose && lastPose.map((q) => ({ x: +q.x.toFixed(4), y: +q.y.toFixed(4), visibility: +(q.visibility ?? 1).toFixed(2) }));
+  camSend({ t: 'cam', d: { lm, ball: lastBall && { x: lastBall.x, y: lastBall.y, r: lastBall.r }, hoop: cfg.hoop, aspect } });
+}
+
+// ---------- leagues ----------
+function openLeague() {
+  const lg = cfg.league, pl = P.current(), body = $('#leagueBody');
+  if (!lg) {
+    body.innerHTML = `<p style="color:var(--dim);margin-top:0">Play against friends in other houses. Each week has 3 drills; your league points are your best scores as a % of the pro. Standings use your Game Library account.</p>
+      <div class="newp"><input type="text" id="lgCode" placeholder="League code" maxlength="5" style="text-transform:uppercase"><button class="btn" id="lgJoin">Join</button></div>
+      <p style="text-align:center;color:var(--faint)">or</p><button class="btn primary" id="lgNew" style="width:100%">Start a new league</button>`;
+    $('#lgJoin').onclick = () => { const c = cleanCode($('#lgCode').value); if (c.length !== 5) { toast('League codes have 5 letters'); return; } cfg.league = { code: c }; P.save(); openLeague(); };
+    $('#lgNew').onclick = () => { cfg.league = { code: newLeagueCode() }; P.save(); openLeague(); };
+  } else {
+    const lp = pl ? leaguePoints(pl) : null;
+    body.innerHTML = `<div style="text-align:center"><p class="label" style="margin:0">League code · share it with friends</p><div style="font:800 48px/1.1 var(--display);color:var(--orange);letter-spacing:.12em">${esc(lg.code)}</div></div>
+      <p class="label" style="margin-top:14px">Drills of the week (${esc(isoWeek())})</p>
+      <div style="display:grid;gap:6px">${weekDrills().map((m, k) => `<div class="pitem" style="justify-content:space-between"><div><b>${esc(P.MODES[m].name)}</b><span>Pro: ${PRO[m]}</span></div><div style="text-align:right"><b>${lp?.parts[k].best ?? '–'}</b><span>${lp?.parts[k].pts ?? 0} pts</span></div></div>`).join('')}</div>
+      <p style="text-align:center;font:800 26px var(--display);margin:12px 0">${esc(pl?.name || '')}: ${lp?.total ?? 0} league points</p>
+      <div class="row"><button class="btn primary" id="lgPost">Post my points</button><button class="btn" id="lgTable">Standings</button><button class="btn ghost danger" id="lgLeave">Leave</button></div>`;
+    $('#lgPost').onclick = () => postLeague(true);
+    $('#lgTable').onclick = () => { if (!boardsOn()) { toast('Leagues need the internet'); return; } $('#mLeague').classList.remove('on'); GameSync.board(leagueBoard(lg.code), `League ${lg.code} · ${isoWeek()}`); };
+    $('#lgLeave').onclick = () => { if (confirm('Leave this league?')) { cfg.league = null; P.save(); openLeague(); } };
+  }
+  $('#mLeague').classList.add('on');
+}
+function postLeague(loud) {
+  const lg = cfg.league, pl = P.current(); if (!lg || !pl || !boardsOn()) { if (loud) toast('Leagues need the internet'); return; }
+  const lp = leaguePoints(pl); if (!lp.total) { if (loud) toast('Play a drill of the week first'); return; }
+  GameSync.postScore(leagueBoard(lg.code), lp.total, pl.name).then((ok) => loud && toast(ok === false ? 'Could not post' : 'Posted to the league', ok !== false));
+}
+$('#btnLeague').onclick = openLeague;
+$('#mLeagueClose').onclick = () => $('#mLeague').classList.remove('on');
+
 // ---------- boot ----------
 renderHome();
 if (Q.get('board')) boardView(Q.get('board'));
+else if (Q.get('remote')) remoteView(Q.get('remote'));
+else if (Q.get('cam')) sideCamView(Q.get('cam'));
+if (cfg.voiceCmd && voiceSupported() && !TEST) vc.start();
 else if (sharedReport) { go('sReport'); $('#repBar').classList.add('hidden'); $('#report').innerHTML = reportHTML(sharedReport, '<p style="color:var(--faint);font-size:12px;margin-top:14px">Shared from WHISTLE · Basketball Ref & Coach</p>'); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'live' && !videoSrc) $('#cPause').click(); });
 addEventListener('keydown', (e) => {
@@ -1436,4 +1717,4 @@ if (window.GameSync && !TEST) {
   });
 }
 const TSTATS = { frames: 0, pose: 0, ball: 0, ai: 0, ms: 0 }, TLOG = [], TRACE = [];
-if (TEST) window.__wh = { replay, board, get plan() { return plan; }, get teamRun() { return teamRun; }, startPlan, sendBoard, hl, get turns() { return turns; }, turnShot, formResult, renderDash, stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };
+if (TEST) window.__wh = { handleCmd, get careerRun() { return careerRun; }, startChapter, onBoardData, get side() { return side; }, sideRef, replay, board, get plan() { return plan; }, get teamRun() { return teamRun; }, startPlan, sendBoard, hl, get turns() { return turns; }, turnShot, formResult, renderDash, stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };

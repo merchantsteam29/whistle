@@ -225,6 +225,75 @@ await send('Page.navigate', { url: 'http://localhost:8090' + link }); await slee
 check(await ev(`return document.getElementById('sReport').classList.contains('on') && document.getElementById('repBar').classList.contains('hidden') && document.querySelector('#report h2').textContent === 'Jordan'`), 'shared report link opens read-only');
 await shot('32-shared-report');
 
+// ---------- 1.5 features ----------
+await send('Page.navigate', { url: 'http://localhost:8090/?test' }); await sleep(2500);
+await ev(`__wh.P.select(__wh.P.players().find((p) => p.name === 'Jordan').id);`);
+const goLive = async () => { await waitReady(); await ev(`document.getElementById('btnGo').click();`); await sleep(3200); };
+// 21 with 2 players
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=horse]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+await ev(`document.querySelector('#tKind [data-v=t21]').click(); document.querySelector('#tN [data-v="2"]').click(); document.getElementById('tGo').click();`);
+await goLive();
+await ev(`__wh.turnShot(true, { three: true }); __wh.turnShot(true);`); await sleep(300);
+check(await ev(`return __wh.turns.kind === 't21' && __wh.turns.score[0] === 4`), '21: a three + a tip-in = 4');
+await shot('33-game21');
+await ev(`document.getElementById('cEnd').click();`); await sleep(800);
+// Around the World
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=horse]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+await ev(`document.querySelector('#tKind [data-v=world]').click(); document.getElementById('tGo').click();`);
+await goLive(); await ev(`__wh.turnShot(true); __wh.turnShot(true);`); await sleep(300);
+check(await ev(`return __wh.turns.pos[0] === 2`), 'Around the World: two makes = spot 3');
+await shot('34-world');
+await ev(`document.getElementById('cEnd').click();`); await sleep(800);
+// trick contest, 1 kid
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=tricks]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+await ev(`document.querySelectorAll('#teamKids input').forEach((i, k) => { i.checked = k === 0; }); document.getElementById('teamKids').dispatchEvent(new Event('change')); document.getElementById('teamGo').click();`);
+await goLive();
+await ev(`for (let i = 0; i < 10; i++) __wh.onEvent({ type: 'dribble', streak: i + 1, total: i + 1, hand: i % 2, legs: i % 4 === 3 });`); await sleep(400);
+check(await ev(`return __wh.session.trickScore > 9`), `tricks scored (${await ev(`return __wh.session.trickScore`)} pts)`);
+await shot('35-tricks');
+await ev(`__wh.session.seconds = 31;`); await sleep(3500);
+check(await ev(`return document.querySelectorAll('#summary .cards div').length === 3`), "judges' cards on the summary");
+await shot('36-trick-cards');
+// career chapter 1
+await ev(`__wh.go('sHome'); __wh.startChapter(0);`); await sleep(1500);
+check(await ev(`return !document.getElementById('coachCard').classList.contains('hidden') && document.getElementById('coachCard').textContent.includes('Tryouts')`), 'career: coach introduces the chapter');
+await shot('37-career-coach');
+await ev(`document.getElementById('coachOk').click();`); await goLive();
+await ev(`for (let i = 1; i <= 31; i++) __wh.onEvent({ type: 'dribble', streak: i, total: i, hand: 1 }); __wh.session.seconds = 31;`); await sleep(2500);
+check(await ev(`return document.getElementById('summary').textContent.includes('Chapter 1 passed') && __wh.P.current().career.ch === 1`), 'career: passing tryouts unlocks chapter 2');
+await shot('38-career-pass');
+// career rival chapter: the rival shoots on its own
+await ev(`__wh.go('sHome'); __wh.startChapter(4);`); await sleep(1200); await ev(`document.getElementById('coachOk').click();`); await goLive();
+await ev(`__wh.turnShot(false);`); await sleep(3300);
+check(await ev(`return __wh.turns.names[1] === 'Riley' && __wh.turns.shots[1] >= 1`), 'career: the rival takes its own shots');
+await ev(`document.getElementById('cEnd').click();`); await sleep(800);
+// voice / remote commands, bad call, side camera handover
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=free]').click(); document.getElementById('btnStart').click();`); await goLive();
+await ev(`__wh.handleCmd('pause');`); check(await ev(`return __wh.phase`) === 'paused', 'command: pause'); await ev(`__wh.handleCmd('resume');`); check(await ev(`return __wh.phase`) === 'live', 'command: resume');
+await sleep(1500);
+await ev(`__wh.onEvent({ type: 'violation', kind: 'travel', why: '3 steps', title: 'TRAVELING', signal: 'Roll', tip: 'x' });`); await sleep(300);
+check(await ev(`return !document.getElementById('cBad').classList.contains('hidden')`), 'Bad call button after a call');
+await ev(`document.getElementById('cBad').click();`); await sleep(5500);
+check((await ev(`const { listBadCalls } = await import('./js/badcalls.js'); const l = await listBadCalls(); return l.length && l[0].clip ? l[0].clip.size : 0`)) > 0, 'bad call saved with a video clip');
+const fake = '[' + Array.from({ length: 33 }, (_, k) => '{x:' + (0.5 + (k % 2) * 0.02) + ',y:' + (0.2 + k * 0.02) + ',visibility:0.9}').join(',') + ']';
+await ev(`__wh.onBoardData({ t: 'cam', d: { lm: ${fake}, ball: null, hoop: null, aspect: 16 / 9 } });`); await sleep(100);
+check(await ev(`return __wh.ref.opts.noTravel === true`), 'side camera takes over travel calls');
+await sleep(800); check(await ev(`return __wh.ref.opts.noTravel === false`), 'main camera takes travels back when the side camera stops');
+await ev(`document.getElementById('cEnd').click();`); await sleep(800);
+// league
+await ev(`__wh.go('sHome'); document.getElementById('btnLeague').click(); document.getElementById('lgCode').value = 'abcde'; document.getElementById('lgJoin').click();`); await sleep(300);
+check(await ev(`return document.getElementById('leagueBody').textContent.includes('ABCDE') && document.querySelectorAll('#leagueBody .pitem').length === 3`), 'league joined with 3 drills of the week');
+await shot('39-league');
+await ev(`document.getElementById('mLeagueClose').click(); __wh.go('sSettings');`); await sleep(200);
+await ev(`document.getElementById('badBtn').click();`); await sleep(400);
+check(await ev(`return document.querySelectorAll('#mListBody [data-dl]').length >= 1`), 'bad call reports list');
+await shot('40-badcalls');
+await ev(`document.getElementById('mListClose').click();`);
+// calibration starts with "stand still"
+await ev(`document.getElementById('calBtn').click();`); await goLive();
+check(await ev(`return document.getElementById('turnBanner').textContent.includes('Stand still')`), 'calibration wizard starts');
+await ev(`document.getElementById('cEnd').click();`); await sleep(600);
+
 console.log('\nERRORS (' + errs.length + ')'); for (const e of errs) console.log('  ' + e);
 ws.close(); ch.kill(); await sleep(500); try { fs.rmSync(prof, { recursive: true, force: true }); } catch {}
 process.exit(errs.length ? 1 : 0);

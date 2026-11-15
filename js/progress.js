@@ -22,7 +22,10 @@ export const MODES = {
   plan: { name: 'Practice plan', desc: 'A coach-run practice: stations, timers and voice cues.', plan: true },
   team: { name: 'Team mode', desc: 'A whole team takes turns on a drill. Printable reports.', team: true },
   game: { name: 'Game', desc: '1v1 or 2v2 on one camera: fouls, 2s and 3s, free throws.', game: true },
-  horse: { name: 'HORSE & Knockout', desc: '2 to 4 kids take turns shooting. Collect letters or get knocked out.', turns: true },
+  horse: { name: 'Shooting games', desc: 'HORSE, Knockout, 21 or Around the World for 2 to 4 kids.', turns: true },
+  tricks: { name: 'Trick Contest', desc: '30-second trick runs, combos and judges\' cards for 1 to 4 kids.', secs: 30, tricks: true, unit: 'points', score: (s) => Math.round(s.trickScore || 0) },
+  career: { name: 'Career', desc: 'Your rookie season: chapters with a coach, ending in a championship.', career: true },
+  calib: { name: 'Calibrate', desc: 'A 1-minute setup that tunes WHISTLE to this player.', calib: true },
 };
 
 // badges: test(session, lifetimeStats) -> true when earned
@@ -48,6 +51,8 @@ export const BADGES = [
   { id: 'horse', name: 'Horse Master', desc: 'Win a game of HORSE or Knockout', icon: 'trophy', test: (s) => s.mode === 'horse' && s.won },
   { id: 'streak7', name: 'On a Roll', desc: 'Finish the daily challenge 7 days in a row', icon: 'flame2', test: (s, L, p) => (p?.daily?.streak || 0) >= 7 },
   { id: 'beatpro', name: 'Beat the Pro', desc: 'Beat the pro score in any drill', icon: 'bolt', test: (s) => !!s.beatPro },
+  { id: 'champion', name: 'Champion', desc: 'Win the championship in Career mode', icon: 'trophy', test: (s, L, p) => !!p?.career?.done },
+  { id: 'judge10', name: 'Perfect 10', desc: 'Get a 10 from a judge in the Trick Contest', icon: 'star', test: (s) => (s.cards || []).some((c) => c >= 10) },
   { id: 'rat', name: 'Gym Rat', desc: 'Finish 10 sessions', icon: 'cal', test: (s, L) => L.sessions >= 10 },
   { id: 'iron', name: 'Iron Player', desc: '60 minutes of practice all-time', icon: 'clock', test: (s, L) => L.seconds >= 3600 },
 ];

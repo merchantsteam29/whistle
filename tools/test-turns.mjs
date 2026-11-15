@@ -36,5 +36,21 @@ const check = (ok, name) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`); if
   g.shot(true); g.shot(false);
   check(g.winner === 0, 'Knockout: last one standing wins');
 }
+{ // 21: long shot 2, tip 1, keep going; exactly 21 wins; over 21 back to 13
+  const g = new Turns({ kind: 't21', players: 2 });
+  for (let k = 0; k < 7; k++) { g.shot(true, null, { three: false }); g.shot(true); } // 7 x (2+1) = 21
+  check(g.winner === 0 && g.score[0] === 21, '21: seven long+tip rounds = exactly 21, win');
+  const h = new Turns({ kind: 't21', players: 2 }); h.score[0] = 20; h.shot(true, null, { three: true });
+  check(h.score[0] === 13 && h.state().who === 1, '21: going over = back to 13, turn passes');
+  const m = new Turns({ kind: 't21', players: 2 }); m.shot(true, null, {}); m.shot(false);
+  check(m.score[0] === 2 && m.state().who === 1 && m.state().role === 'long', '21: missed tip = turn over');
+}
+{ // Around the World: 5 makes in a row wins; a miss passes the ball
+  const g = new Turns({ kind: 'world', players: 2 });
+  g.shot(true); g.shot(true); g.shot(false);
+  check(g.pos[0] === 2 && g.state().who === 1, 'Around the World: miss passes, position kept');
+  g.shot(false); g.shot(true); g.shot(true); g.shot(true);
+  check(g.winner === 0, 'Around the World: first round the world wins');
+}
 console.log(bad ? `\n${bad} FAILED` : '\nall passed');
 process.exit(bad ? 1 : 0);

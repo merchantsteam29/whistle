@@ -85,6 +85,8 @@ const shove = (dur = 0.35) => ({ dur, fn(st, u) {
   const k = Math.min(1, u / 0.5); b.hands[0] = { X: lerp(b.hipX - 0.1, a.hipX + 0.04, k), Y: lerp(b.hipY + 0.05, a.hipY - 0.03, k) }; if (u < 0.6) return;
   const dx = -0.02; a.hipX += dx; a.hands.forEach((h) => (h.X += dx)); a.feet.forEach((f) => (f.X += dx));
 } });
+// the ball flies from one player's chest to another's
+const passTo = (a, b) => { let p0; return { dur: 0.4, fn(st, u) { const A = st.ps[a], B = st.ps[b]; if (!p0) p0 = { X: A.hipX, Y: A.shY + 0.1 * A.k }; A.hands = [{ X: A.hipX - 0.1, Y: A.hipY + 0.05 }, { X: A.hipX + 0.1, Y: A.hipY + 0.05 }]; st.ball = { X: lerp(p0.X, B.hipX, u), Y: p0.Y - Math.sin(u * Math.PI) * 0.05 }; } }; };
 const HOOP = { x1: 0.15 / A, y1: 0.12, x2: 0.25 / A, y2: 0.12 };
 const shotAt = (who, make = true) => {
   let b0;
@@ -118,6 +120,8 @@ const R = [
   run('defender in the lane is fine (only the team with the ball)', () => ({ ps: [player(0.3), player(1.0)], ball: null }), [wait(0.3), dribbleFor(0, 4.5)], { lane: { x1: 0.9 / A, x2: 1.1 / A }, expect: { 'violation:lane': 0 } }),
   run('shot clock (5 s) runs out', far, [wait(0.3), dribbleFor(0, 6.5)], { rules: { shotClock: 5 }, expect: { 'violation:shotclock': 1 } }),
   run('shot clock resets on a shot', far, [wait(0.3), dribbleFor(0, 3), hold(0, 0.4), shotAt(0, false), wait(0.4), dribbleFor(0, 3)], { rules: { shotClock: 5 }, hoop: HOOP, expect: { 'violation:shotclock': 0, shot: 1 } }),
+  run('2v2: pass to a teammate who scores = assist', () => ({ ps: [player(0.35), player(0.85), player(1.35), player(1.7)], ball: null }), [wait(0.3), hold(0, 0.6), passTo(0, 1), hold(1, 0.6), shotAt(1, true), wait(0.8)], { format: '2v2', hoop: HOOP, expect: { passTo: 1, assist: 1, 'stat:0:ast': 1, 'stat:0:passes': 1, steal: 0 } }),
+  run('2v2: the other team grabs it = steal', () => ({ ps: [player(0.35), player(0.85), player(1.35), player(1.7)], ball: null }), [wait(0.3), hold(0, 0.6), passTo(0, 2), hold(2, 0.6)], { format: '2v2', expect: { steal: 1, 'stat:2:stl': 1, passTo: 0 } }),
 ];
 
 // identity: two players cross; shirts keep them apart

@@ -25,6 +25,15 @@ if (code) {
   await sleep(1200);
   check(/TRAVELING/.test(await tv.ev(`return document.getElementById('bv').textContent`)), 'calls show on the scoreboard');
   await tv.shot('tools/shots/board-tv.png');
+  // the same room works as a remote control
+  await tv.nav(`http://localhost:8090/?remote=${code}`);
+  for (let i = 0; i < 30; i++) { await sleep(500); if (await tv.ev(`return !/Connecting|Waiting/.test(document.getElementById('rmScore').textContent)`)) break; }
+  await sleep(500);
+  await tv.ev(`document.querySelector('[data-c=pause]').click();`); await sleep(1200);
+  check(await ref.ev(`return __wh.phase`) === 'paused', 'remote control: Pause works on the ref device');
+  await tv.ev(`document.querySelector('[data-c=resume]').click();`); await sleep(1200);
+  check(await ref.ev(`return __wh.phase`) === 'live', 'remote control: Resume');
+  await tv.shot('tools/shots/remote.png');
 }
 console.log('errors:', [...ref.errs, ...tv.errs].join(' | ') || 'none');
 await ref.close(); await tv.close();

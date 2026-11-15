@@ -319,11 +319,11 @@
   .daily b { display: block; font: 700 18px var(--display); letter-spacing: .04em; }
   .daily span { color: var(--dim); font-size: 13px; }
   .daily.done { border-color: var(--green); background: linear-gradient(90deg, #0d2a1d, var(--panel)); }
-  .ghost { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); z-index: 3; width: min(420px, calc(100% - 24px)); background: rgba(8,13,24,.9); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; display: grid; gap: 5px; }
-  .ghost div { display: grid; grid-template-columns: 52px 1fr 34px; gap: 8px; align-items: center; font: 700 12px var(--display); letter-spacing: .12em; color: var(--dim); }
-  .ghost i { height: 10px; border-radius: 5px; background: #1b2840; overflow: hidden; display: block; }
-  .ghost u { display: block; height: 100%; border-radius: 5px; transition: width .2s; }
-  .ghost b { color: var(--text); text-align: right; font-size: 15px; }
+  .ghostbar { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); z-index: 3; width: min(420px, calc(100% - 24px)); background: rgba(8,13,24,.9); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; display: grid; gap: 5px; }
+  .ghostbar div { display: grid; grid-template-columns: 52px 1fr 34px; gap: 8px; align-items: center; font: 700 12px var(--display); letter-spacing: .12em; color: var(--dim); }
+  .ghostbar i { height: 10px; border-radius: 5px; background: #1b2840; overflow: hidden; display: block; }
+  .ghostbar u { display: block; height: 100%; border-radius: 5px; transition: width .2s; }
+  .ghostbar b { color: var(--text); text-align: right; font-size: 15px; }
   .nextup { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(5,8,15,.88); text-align: center; }
   .nextup .k { font: 700 14px var(--display); letter-spacing: .24em; color: var(--dim); text-transform: uppercase; }
   .nextup h2 { font: 800 56px/1 var(--display); margin: 8px 0; letter-spacing: .04em; }
@@ -379,6 +379,31 @@
     #printArea .stat span, #printArea .label, #printArea p { color: #333 !important; }
     #printArea .jersey { color: #000; border: 2px solid #000; }
   }
+
+  /* --- 1.5 --- */
+  .careerlist { display: grid; gap: 6px; max-height: 50vh; overflow-y: auto; }
+  .chap { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel2); }
+  .chap .n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 800 15px var(--display); background: #0b1424; color: var(--faint); flex: none; }
+  .chap.done .n { background: var(--green); color: #04140c; } .chap.cur { border-color: var(--orange); } .chap.cur .n { background: var(--orange); color: #1a0d02; }
+  .chap.lock { opacity: .45; }
+  .chap b { display: block; font: 700 16px var(--display); letter-spacing: .03em; } .chap span { color: var(--dim); font-size: 12px; }
+  .coachcard { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; background: rgba(5,8,15,.9); padding: 16px; }
+  .coachcard > div { max-width: 520px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .coachcard .who { font: 700 13px var(--display); letter-spacing: .2em; color: var(--orange); text-transform: uppercase; }
+  .coachcard h2 { font: 800 34px/1 var(--display); margin: 6px 0 10px; letter-spacing: .04em; text-transform: uppercase; }
+  .coachcard p { font-size: 17px; line-height: 1.5; }
+  .mic { position: absolute; right: 12px; top: 92px; z-index: 3; background: rgba(8,13,24,.9); border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px; font: 700 12px var(--display); letter-spacing: .12em; color: var(--dim); }
+  .mic.on::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 6px; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .trickpop { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 4; font: 800 40px var(--display); letter-spacing: .06em; color: #fff; text-shadow: 0 4px 20px rgba(0,0,0,.7); pointer-events: none; animation: tp 1s forwards; white-space: nowrap; }
+  .trickpop small { display: block; font-size: 20px; color: var(--gold); text-align: center; }
+  @keyframes tp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.8); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+  .cards { display: flex; gap: 12px; justify-content: center; margin: 10px 0; }
+  .cards div { width: 70px; height: 92px; border-radius: 8px; background: #fff; color: #0a111f; display: grid; place-items: center; font: 800 38px var(--display); box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  .remote { padding: 16px; display: grid; gap: 10px; max-width: 520px; margin: 0 auto; }
+  .remote .score { text-align: center; font: 800 28px var(--display); letter-spacing: .06em; padding: 10px; background: var(--panel); border-radius: 12px; border: 1px solid var(--line); }
+  .remote .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .remote button { min-height: 72px; font: 800 22px var(--display); letter-spacing: .06em; }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 </style>
 </head>
@@ -410,6 +435,7 @@
       <button class="btn" data-go="sProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Stats &amp; badges</button>
       <button class="btn" data-go="sDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Coach dashboard</button>
       <button class="btn" data-go="sReport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>Parent report</button>
+      <button class="btn" id="btnLeague"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5"/></svg>Leagues</button>
       <button class="btn" id="btnBoards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/></svg>Leaderboards</button>
       <button class="btn" id="btnSync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18z"/></svg>Sync</button>
       <button class="btn" data-go="sHelp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>How it works</button>
@@ -442,8 +468,10 @@
   <div class="turnboard hidden" id="turnBoard"></div>
   <div class="turnbanner hidden" id="turnBanner"></div>
   <div class="formcard hidden" id="formCard"></div>
-  <div class="ghost hidden" id="ghost"></div>
+  <div class="ghostbar hidden" id="ghost"></div>
   <div class="nextup hidden" id="nextUp"></div>
+  <div class="coachcard hidden" id="coachCard"></div>
+  <div class="mic hidden" id="mic">LISTENING</div>
   <div class="refpad hidden" id="refPad">
     <b>Home</b><button class="btn sm" data-pts="0,1">+1</button><button class="btn sm" data-pts="0,2">+2</button><button class="btn sm" data-pts="0,3">+3</button><button class="btn sm" data-foul="0">Foul</button>
     <b>Away</b><button class="btn sm" data-pts="1,1">+1</button><button class="btn sm" data-pts="1,2">+2</button><button class="btn sm" data-pts="1,3">+3</button><button class="btn sm" data-foul="1">Foul</button>
@@ -485,6 +513,7 @@
     <div class="sp"></div>
     <button class="btn hidden" id="cReplay" title="Replay the last few seconds in slow motion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M10 9l5 3-5 3z"/></svg><span class="t">Replay</span></button>
     <button class="btn hidden" id="cBoard" title="Show the scoreboard on a second phone or tablet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8M7 10h3M14 10h3"/></svg><span class="t">Scoreboard</span></button>
+    <button class="btn hidden" id="cBad" title="Save this call so it can be fixed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.7a2 2 0 0 0-2 1.7l-1.4 9A2 2 0 0 0 4.3 15zM17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg><span class="t">Bad call</span></button>
     <button class="btn hidden" id="cWave" title="Wave off the last call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="t">No call</span></button>
     <button class="btn hidden" id="cFix" title="Flip the last shot between made and missed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg><span class="t" id="cFixT">Fix shot</span></button>
     <button class="btn hidden" id="cRef" title="Score and fouls by hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="14" r="6"/><path d="M13 10h8v4h-4M6 5 4 2"/></svg><span class="t">Ref</span></button>
@@ -526,6 +555,9 @@
 <!-- ================= SECOND-SCREEN SCOREBOARD ================= -->
 <section id="sBoardView" class="screen"><div class="bv" id="bv"><div class="title">WHISTLE scoreboard</div><p style="color:var(--dim)" id="bvStatus">Connecting…</p></div></section>
 
+<!-- ================= REMOTE ================= -->
+<section id="sRemote" class="screen"><div class="remote" id="remote"></div></section>
+
 <!-- ================= SETTINGS ================= -->
 <section id="sSettings" class="screen">
   <div class="wrap" style="max-width:680px">
@@ -561,6 +593,9 @@
       <div class="field"><div><b>Tracking view</b><span>Shows what WHISTLE ignores (red: background spots) and where the AI looked. Handy when a call seems wrong.</span></div><label class="sw"><input type="checkbox" id="setTrack"><i></i></label></div>
       <div class="field"><div><b>Show skeleton</b><span>Draws the tracked body and ball on the video</span></div><label class="sw"><input type="checkbox" id="setSkeleton"><i></i></label></div>
       <div class="field"><div><b>Mirror front camera</b><span>Like a mirror, so moving left looks left</span></div><label class="sw"><input type="checkbox" id="setMirror"><i></i></label></div>
+      <div class="field"><div><b>Calibrate</b><span id="calTxt">A 1-minute setup (stand still, then dribble 5 times) that tunes step and ball detection to this player.</span></div><button class="btn sm" id="calBtn">Calibrate</button></div>
+      <div class="field"><div><b>Voice commands</b><span>Say "start", "pause", "no call", "replay", "next", "made it", "missed" or "end session". Chrome and Edge only.</span></div><label class="sw"><input type="checkbox" id="setVoiceCmd"><i></i></label></div>
+      <div class="field"><div><b>Bad call reports</b><span id="badTxt">Calls you marked as wrong, with the replay clip, saved on this device.</span></div><button class="btn sm" id="badBtn">View</button></div>
       <div class="field"><div><b>Battery saver</b><span>Tracks fewer frames, a smaller camera picture and no replay. It also pauses when nobody has been in view for a minute.</span></div><label class="sw"><input type="checkbox" id="setSaver"><i></i></label></div>
       <div class="field"><div><b>Play offline</b><span id="offTxt">Download the tracking files once so WHISTLE works with no internet.</span></div><button class="btn sm" id="offBtn">Download</button></div>
       <div class="field"><div><b>Ball colour</b><span id="setBallTxt">Standard orange</span></div><button class="btn sm" id="setBallReset">Reset</button></div>
@@ -606,6 +641,12 @@
       <p><b>Team mode</b> runs a drill for a whole group: each kid gets a turn, their own XP, and a results table at the end with printable reports. The <b>Parent report</b> sums up a kid's last 7 or 30 days. Share it as a link (the numbers travel inside the link, nothing is uploaded) or print it.</p>
       <h3>Replay, scoreboard screen and arena</h3>
       <p><b>Replay</b> plays the last few seconds in slow motion with the skeleton drawn on. <b>Scoreboard</b> turns a second phone or tablet into a big scoreboard: open the link it shows on the other device. <b>Arena mode</b> (Settings) adds a crowd, a buzzer and player introductions. Level up to unlock new scoreboard themes, whistles and celebrations on the Stats page.</p>
+      <h3>Career, tricks and more shooting games</h3>
+      <p><b>Career</b> is a rookie season of 10 chapters with Coach Reyes: tryouts, drills, games against Riley (WHISTLE shoots for the rival) and a championship. The <b>Trick Contest</b> scores 30-second runs (crossovers, between the legs, spin moves, finishes, with combos), and three judges hold up cards. <b>Shooting games</b> now include <b>21</b> (2s and 3s, tip-ins worth 1, exactly 21 wins, over drops you to 13) and <b>Around the World</b> (make it from 5 spots in order). In 2v2 games WHISTLE counts <b>passes, assists and steals</b>.</p>
+      <h3>Making the calls fairer</h3>
+      <p><b>Calibrate</b> (Settings) is a 1-minute setup per player: stand still, then dribble 5 times, and WHISTLE tunes its step and ball detection to them. If a call is wrong, tap <b>Bad call</b>: the replay clip and what the ref saw are saved on this device (Settings → Bad call reports) so they can be sent in for tuning. A <b>side camera</b> (a second phone filming from the side, link in the Scoreboard window) takes over travel calls, because steps are easier to see side-on.</p>
+      <h3>Hands-free</h3>
+      <p><b>Voice commands</b> (Settings): say "start", "pause", "resume", "no call", "replay", "next", "made it", "missed" or "end session". The <b>remote control</b> link (in the Scoreboard window) turns another phone into big buttons for pause, no call, points and fouls. <b>Leagues</b> let friends in other houses compete on 3 drills of the week.</p>
       <h3>Offline and battery</h3>
       <p>Settings → <b>Play offline</b> downloads the tracking files once so WHISTLE works without internet. <b>Battery saver</b> tracks fewer frames, turns off replay and pauses when nobody's in view for a minute.</p>
       <h3>Game mode (1v1 / 2v2)</h3>
@@ -651,6 +692,26 @@
   </div>
 </div>
 
+<!-- career -->
+<div class="modal" id="mCareer">
+  <div class="card" style="width:min(520px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Career</h2><button class="btn sm" id="mCareerClose">Close</button></div>
+    <div class="careerlist" id="careerList"></div>
+    <button class="btn primary big" id="careerGo" style="margin-top:12px">Play chapter</button>
+  </div>
+</div>
+
+<!-- leagues -->
+<div class="modal" id="mLeague">
+  <div class="card" style="width:min(520px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Leagues</h2><button class="btn sm" id="mLeagueClose">Close</button></div>
+    <div id="leagueBody"></div>
+  </div>
+</div>
+
+<!-- generic list modal (bad calls) -->
+<div class="modal" id="mList"><div class="card" style="width:min(560px,100%)"><div class="top" style="margin-bottom:12px"><h2 style="font-size:24px" id="mListTitle"></h2><button class="btn sm" id="mListClose">Close</button></div><div id="mListBody"></div></div></div>
+
 <!-- practice plan picker -->
 <div class="modal" id="mPlan">
   <div class="card" style="width:min(520px,100%)">
@@ -676,7 +737,7 @@
 <div class="modal" id="mTurns">
   <div class="card" style="width:min(500px,100%)">
     <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Shooting game</h2><button class="btn sm" id="mTurnsClose">Cancel</button></div>
-    <div class="field"><div><b>Game</b><span id="tKindDesc"></span></div><div class="seg" id="tKind"><button data-v="horse">HORSE</button><button data-v="knockout">Knockout</button></div></div>
+    <div class="field"><div><b>Game</b><span id="tKindDesc"></span></div><div class="seg" id="tKind"><button data-v="horse">HORSE</button><button data-v="knockout">Knockout</button><button data-v="t21">21</button><button data-v="world">World</button></div></div>
     <div class="field" id="tWordRow"><div><b>Word</b><span>Letters to lose</span></div><div class="seg" id="tWord"><button data-v="HORSE">HORSE</button><button data-v="PIG">PIG</button></div></div>
     <div class="field"><div><b>Players</b><span>One shooter in front of the camera at a time</span></div><div class="seg" id="tN"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
     <div id="tRoster" style="display:grid;gap:6px;margin:10px 0"></div>
