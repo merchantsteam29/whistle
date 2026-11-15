@@ -265,6 +265,47 @@
   .box th:first-child, .box td:first-child { text-align: left; }
   .box tr.tot td { font-weight: 700; }
   .box .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+
+  /* --- dashboard --- */
+  .dash-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .chart-card { position: relative; padding: 14px 14px 8px; }
+  .chart-card .label { margin-bottom: 2px; }
+  .chart { width: 100%; height: auto; display: block; outline: none; }
+  .chart:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+  .chart .gl { stroke: #233452; stroke-width: 1; }
+  .chart .ax { fill: var(--faint); font: 500 10px var(--body); }
+  .chart .lv { fill: var(--text); font: 700 12px var(--body); }
+  .chart .xh { stroke: var(--dim); stroke-width: 1; }
+  .trend { margin: 0 0 4px; font-size: 12px; color: var(--dim); }
+  .trend.up { color: var(--green); } .trend.down { color: var(--red); }
+  .tip { position: absolute; top: 46px; background: #0b1424; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; pointer-events: none; font-size: 12px; min-width: 100px; }
+  .tip b { display: block; font-size: 15px; } .tip span { color: var(--dim); }
+  /* --- HORSE board --- */
+  .turnboard { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 3; display: flex; gap: 6px; background: rgba(8,13,24,.92); border: 1px solid var(--line); border-radius: 12px; padding: 6px; max-width: calc(100% - 20px); overflow-x: auto; }
+  .tb-p { padding: 4px 12px; border-radius: 8px; text-align: center; min-width: 90px; }
+  .tb-p.cur { background: #22190f; outline: 2px solid var(--orange); }
+  .tb-p.out { opacity: .4; text-decoration: line-through; }
+  .tb-p b { display: block; font: 700 15px var(--display); letter-spacing: .06em; white-space: nowrap; }
+  .tb-p span { font: 800 22px var(--display); letter-spacing: .2em; color: var(--red); }
+  .tb-p span i { font-style: normal; color: #2a3a58; }
+  .turnbanner { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 3; background: var(--orange); color: #1a0d02; font: 800 26px var(--display); letter-spacing: .06em; padding: 8px 22px; border-radius: 10px; text-transform: uppercase; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .turnbanner small { display: block; font: 600 12px var(--body); letter-spacing: 0; text-transform: none; text-align: center; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .swatches button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
+  .swatches button.on { border-color: #fff; }
+  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .clip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .clip video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; }
+  .clip div { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; gap: 8px; }
+  .clip b { font: 700 16px var(--display); letter-spacing: .04em; }
+  .formcard { position: absolute; right: 12px; bottom: 76px; z-index: 3; width: min(300px, calc(100% - 24px)); background: rgba(10,17,31,.95); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; transition: opacity .3s; }
+  .formcard .sc { font: 800 34px/1 var(--display); color: var(--orange); }
+  .formcard .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+  .formcard .row4 div { text-align: center; font: 700 10px var(--display); letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+  .formcard .row4 i { display: block; height: 6px; border-radius: 3px; background: #2a3a58; margin-bottom: 4px; overflow: hidden; }
+  .formcard .row4 i u { display: block; height: 100%; background: var(--green); }
+  .formcard p { margin: 0; font-size: 13px; color: #c8d3e6; }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 </style>
 </head>
@@ -293,6 +334,9 @@
 
     <div class="home-foot">
       <button class="btn" data-go="sProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Stats &amp; badges</button>
+      <button class="btn" data-go="sDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Coach dashboard</button>
+      <button class="btn" id="btnBoards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/></svg>Leaderboards</button>
+      <button class="btn" id="btnSync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18z"/></svg>Sync</button>
       <button class="btn" data-go="sHelp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>How it works</button>
       <button class="btn" data-go="sSettings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 10h.1a2 2 0 1 1 0 4z"/></svg>Settings</button>
       <button class="btn" id="installApp" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>Install app</button>
@@ -320,6 +364,9 @@
     <div class="gb-team away" id="gbAway"><div class="nm"><span id="gbAwayName">AWAY</span><small id="gbAwayFouls">Fouls 0</small></div><div class="pts" id="gbAwayScore">0</div><div class="pa"></div></div>
   </div>
   <div id="tags"></div>
+  <div class="turnboard hidden" id="turnBoard"></div>
+  <div class="turnbanner hidden" id="turnBanner"></div>
+  <div class="formcard hidden" id="formCard"></div>
   <div class="refpad hidden" id="refPad">
     <b>Home</b><button class="btn sm" data-pts="0,1">+1</button><button class="btn sm" data-pts="0,2">+2</button><button class="btn sm" data-pts="0,3">+3</button><button class="btn sm" data-foul="0">Foul</button>
     <b>Away</b><button class="btn sm" data-pts="1,1">+1</button><button class="btn sm" data-pts="1,2">+2</button><button class="btn sm" data-pts="1,3">+3</button><button class="btn sm" data-foul="1">Foul</button>
@@ -341,6 +388,10 @@
       <div class="row"><button class="btn sm" id="ballDefault">Use standard orange</button></div></div></div>
     <div class="chk" id="chkHoop"><div class="dot">3</div><div><b>Mark the hoop <span style="color:var(--faint)">(optional)</span></b><span id="chkHoopTxt">For auto-scored shots: tap the left edge of the rim, then the right edge.</span>
       <div class="row"><button class="btn sm" id="hoopMark">Mark hoop</button><button class="btn sm ghost" id="hoopClear">No hoop</button></div></div></div>
+    <div class="chk" id="chkBounds"><div class="dot">·</div><div><b>Sideline <span style="color:var(--faint)">(optional)</span></b><span id="chkBoundsTxt">For out-of-bounds calls: tap two points along the line on the floor.</span>
+      <div class="row"><button class="btn sm" id="boundsMark">Mark sideline</button><button class="btn sm ghost hidden" id="boundsClear">No line</button></div></div></div>
+    <div class="chk hidden" id="chkLane"><div class="dot">·</div><div><b>Lane <span style="color:var(--faint)">(optional)</span></b><span id="chkLaneTxt">For 3-second calls: tap the left edge of the paint on the floor, then the right edge.</span>
+      <div class="row"><button class="btn sm" id="laneMark">Mark lane</button><button class="btn sm ghost hidden" id="laneClear">No lane</button></div></div></div>
     <div class="chk hidden" id="chkThree"><div class="dot">4</div><div><b>3-point line <span style="color:var(--faint)">(optional)</span></b><span id="chkThreeTxt">Tap the floor where the 3-point line is. Makes from further out count 3.</span>
       <div class="row"><button class="btn sm" id="threeMark">Mark 3-pt line</button><button class="btn sm ghost hidden" id="threeClear">No 3s</button></div></div></div>
     <p style="margin:10px 0 0;font-size:13px;color:var(--dim)">No court right now? <button class="btn sm ghost" id="pickVideo" style="padding:4px 8px">Ref a recorded video</button><input type="file" id="videoFile" accept="video/*" hidden></p>
@@ -376,14 +427,28 @@
   </div>
 </section>
 
+<!-- ================= COACH DASHBOARD ================= -->
+<section id="sDash" class="screen">
+  <div class="wrap">
+    <div class="top"><button class="btn" data-go="sHome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>Coach dashboard</h2></div>
+    <div id="dash"></div>
+  </div>
+</section>
+
 <!-- ================= SETTINGS ================= -->
 <section id="sSettings" class="screen">
   <div class="wrap" style="max-width:680px">
     <div class="top"><button class="btn" data-go="sHome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>Settings</h2></div>
     <div class="card">
       <p class="label">Rules</p>
+      <div class="field"><div><b>Call carrying</b><span>Hand scooping under the ball mid-dribble. Turn off for very young kids.</span></div><label class="sw"><input type="checkbox" id="setCarry"><i></i></label></div>
+      <div class="field"><div><b>Shooting form coach</b><span>Scores every shot out of 10 (legs, elbow, release, follow-through) with a tip</span></div><label class="sw"><input type="checkbox" id="setForm"><i></i></label></div>
       <div class="field"><div><b>Steps after a pick-up</b><span>Real rules allow 2. Beginner allows 3 for younger kids.</span></div>
         <select id="setSteps"><option value="2">2 · Standard</option><option value="3">3 · Beginner</option></select></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Ref voice</p>
+      <div class="field"><div><b>Voice pack</b><span id="setVoiceDesc">Calm and encouraging</span></div><div class="row" style="flex-wrap:nowrap"><select id="setPack"><option value="coach">Coach</option><option value="hype">Hype announcer</option><option value="strict">Strict ref</option></select><button class="btn sm" id="packTry">Try</button></div></div>
     </div>
     <div class="card" style="margin-top:14px">
       <p class="label">Sound</p>
@@ -424,6 +489,19 @@
         <div class="card" style="background:var(--panel2)"><b>TRAVELING</b><p>Too many steps holding the ball. Picked up on the move: 2 steps allowed (3 in Beginner). Picked up standing still: your first step sets the other foot as your <b>pivot</b>. Move the pivot and it's a travel.</p></div>
         <div class="card" style="background:var(--panel2)"><b>DOUBLE DRIBBLE</b><p>You dribbled, picked the ball up, then started dribbling again. Once you pick it up, pass or shoot.</p></div>
       </div>
+      <h3>More calls</h3>
+      <div class="sig">
+        <div class="card" style="background:var(--panel2)"><b>CARRYING</b><p>Mid-dribble the hand scoops under the ball and lifts it. You can turn this off in Settings for very young kids.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>OUT OF BOUNDS</b><p>Mark the sideline in setup (two taps on the floor). A foot or a bounce past it with the ball is out.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>3 SECONDS</b><p>Game mode: mark the paint, then nobody on offense may stand in it for more than 3 seconds.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>SHOT CLOCK</b><p>Game mode: 14, 24 or 30 seconds to shoot. It resets on every shot and every change of possession.</p></div>
+      </div>
+      <h3>Shooting form coach</h3>
+      <p>Every shot gets a score out of 10 from four checks: <b>legs</b> (knees bend), <b>elbow</b> (an "L" under the ball), <b>release</b> (above the head) and <b>follow-through</b> (arm up and straight). You get one tip for the weakest part. The Coach dashboard tracks the average over time.</p>
+      <h3>HORSE &amp; Knockout</h3>
+      <p>2 to 4 kids, one shooter in front of the camera at a time. In <b>HORSE</b>, make a shot and everyone has to copy it from the yellow spot; miss the copy and you get a letter. In <b>Knockout</b>, everyone shoots each round, and a miss when someone else made it knocks you out.</p>
+      <h3>Highlights, dashboard and accounts</h3>
+      <p>Makes, threes and 25-dribble streaks are saved as short clips with the WHISTLE overlay, and you can download them at the end of a session. The <b>Coach dashboard</b> shows each kid's progress over weeks. <b>Sync</b> uses your Game Library account so players, XP and badges follow you to other devices, and <b>Leaderboards</b> show today's best Handles 30 and Ten Shots scores.</p>
       <h3>Game mode (1v1 / 2v2)</h3>
       <p>Everyone plays in front of one camera. HOME starts on the left, AWAY on the right, and WHISTLE keeps track of who is who (shirt colours help). Mark the hoop and the 3-point line in setup for automatic 2s and 3s.</p>
       <div class="sig">
@@ -458,10 +536,24 @@
       <div><h4 style="color:var(--orange)">HOME <span style="color:var(--faint);font-size:13px;letter-spacing:.06em">starts on the left</span></h4><div id="gHome"></div></div>
       <div><h4 style="color:var(--blue)">AWAY <span style="color:var(--faint);font-size:13px;letter-spacing:.06em">starts on the right</span></h4><div id="gAway"></div></div>
     </div>
+    <div class="roster" id="gTeams"></div>
+    <div class="field"><div><b>Shot clock</b><span>Seconds to shoot once your team has the ball</span></div><select id="gClock"><option value="0">Off</option><option value="14">14 s</option><option value="24">24 s</option><option value="30">30 s</option></select></div>
     <div class="field"><div><b>Game to</b></div><select id="gTo"><option value="7">7</option><option value="11">11</option><option value="15">15</option><option value="21">21</option><option value="0">No limit</option></select></div>
     <div class="field"><div><b>Foul out</b><span>Personal fouls before a player is out. After that, every foul they make is 2 free throws.</span></div><select id="gFoulOut"><option value="5">5 fouls</option><option value="6">6 fouls</option><option value="0">Off</option></select></div>
     <div class="field"><div><b>Bonus</b><span>From this many team fouls on, every foul is 2 free throws</span></div><select id="gBonus"><option value="4">4 team fouls</option><option value="5">5 team fouls</option><option value="7">7 team fouls</option><option value="0">Off</option></select></div>
     <button class="btn primary big" id="gGo" style="margin-top:12px">Set up the court</button>
+  </div>
+</div>
+
+<!-- HORSE / Knockout setup -->
+<div class="modal" id="mTurns">
+  <div class="card" style="width:min(500px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Shooting game</h2><button class="btn sm" id="mTurnsClose">Cancel</button></div>
+    <div class="field"><div><b>Game</b><span id="tKindDesc"></span></div><div class="seg" id="tKind"><button data-v="horse">HORSE</button><button data-v="knockout">Knockout</button></div></div>
+    <div class="field" id="tWordRow"><div><b>Word</b><span>Letters to lose</span></div><div class="seg" id="tWord"><button data-v="HORSE">HORSE</button><button data-v="PIG">PIG</button></div></div>
+    <div class="field"><div><b>Players</b><span>One shooter in front of the camera at a time</span></div><div class="seg" id="tN"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
+    <div id="tRoster" style="display:grid;gap:6px;margin:10px 0"></div>
+    <button class="btn primary big" id="tGo">Set up the court</button>
   </div>
 </div>
 
@@ -476,6 +568,7 @@
 </div>
 
 <script src="install.js"></script>
+<script src="sync.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

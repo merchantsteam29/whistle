@@ -47,10 +47,10 @@ export function beep(freq = 880, len = 0.12, type = 'square', vol = 0.15) {
 export function swish() { beep(660, 0.1, 'triangle', 0.18); setTimeout(() => beep(990, 0.18, 'triangle', 0.18), 90); }
 export function tick() { beep(1400, 0.03, 'square', 0.05); }
 
-export function say(text, delay = 0) {
+export function say(text, delay = 0, opts = {}) {
   if (!sound.voice || !('speechSynthesis' in window)) return;
   setTimeout(() => {
-    const u = new SpeechSynthesisUtterance(text); u.rate = 1.08; u.pitch = 1; u.volume = sound.volume;
+    const u = new SpeechSynthesisUtterance(text); u.rate = opts.rate ?? 1.08; u.pitch = opts.pitch ?? 1; u.volume = sound.volume;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   }, delay);
 }

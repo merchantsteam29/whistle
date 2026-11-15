@@ -34,7 +34,7 @@ const holdBall = (p) => { const b = { X: p.hipX, Y: p.shY + 0.1 * p.k }; p.hands
 const dribbleBall = (p, u) => { const hand = { X: p.hipX + 0.13 * p.k, Y: p.hipY + 0.04 * p.k }; p.hands[1] = hand; const tri = 1 - Math.abs(2 * (u % 1) - 1); return { X: hand.X, Y: lerp(hand.Y + 0.035, p.floorY - 0.03, tri) }; };
 
 // script: list of {dur, fn(state, u, t)}; state = {ps: [players], ball}
-function run(name, setup, script, { format = '1v1', rules = {}, hoop = null, threeLine = null, expect, answer }) {
+function run(name, setup, script, { format = '1v1', rules = {}, hoop = null, threeLine = null, lane = null, expect, answer }) {
   seed = 3;
   const g = new Game({ format, rules }), st = setup(), evs = [];
   let t = 0;
@@ -43,7 +43,7 @@ function run(name, setup, script, { format = '1v1', rules = {}, hoop = null, thr
     for (let i = 0; i < n; i++) {
       a.fn(st, (i + 1) / n, t);
       const ball = st.ball ? { x: st.ball.X / A, y: st.ball.Y, r: 0.03 } : null;
-      for (const e of g.update({ t, aspect: A, poses: st.ps.map((p) => p && pose(p)), ball, hoop, threeLine })) {
+      for (const e of g.update({ t, aspect: A, poses: st.ps.map((p) => p && pose(p)), ball, hoop, threeLine, lane })) {
         evs.push({ ...e, t: +t.toFixed(2) });
         if (e.type === 'needResult' && answer != null) for (const e2 of g.resolve(answer)) evs.push({ ...e2, t: +t.toFixed(2) });
       }
@@ -113,6 +113,11 @@ const R = [
   run('foul out at 5', two(), [wait(0.3), ...Array.from({ length: 5 }, () => [hold(0, 0.6), both(0, 0.15, swipe(0.15).fn), handsOff, wait(2.2)]).flat()], { rules: { bonusAt: 0, foulOut: 5 }, expect: { fouledOut: 1 } }),
   run('free throws: 2 shots, both made = 2 points', two(), [wait(0.3), ...Array.from({ length: 5 }, () => [hold(0, 0.6), both(0, 0.15, swipe(0.15).fn), handsOff, wait(2.2)]).flat(), (() => { return { dur: 0.01, fn(st) { st.ps[1] = player(1.6); } }; })(), hold(0, 1.0), shotAt(0, true), wait(1), hold(0, 0.6), shotAt(0, true), wait(1)], { rules: { bonusAt: 5, foulOut: 0 }, hoop: HOOP, expect: { ftResult: 2, score: '2-0', 'stat:0:ftm': 2, ftDone: 1 } }),
   run('game to 3: one three ends it', far, [wait(0.3), dribbleFor(0, 1.5), hold(0, 0.5), shotAt(0, true), wait(0.8)], { rules: { toPoints: 3 }, hoop: HOOP, threeLine: { x: 0.35 / A, y: 0.9 }, expect: { gameOver: 1 } }),
+  run('3 seconds: standing in the lane with the ball', far, [wait(0.3), dribbleFor(0, 4.5)], { lane: { x1: 0.4 / A, x2: 0.6 / A }, expect: { 'violation:lane': 1 } }),
+  run('outside the lane: no 3 seconds', far, [wait(0.3), dribbleFor(0, 4.5)], { lane: { x1: 0.8 / A, x2: 1.0 / A }, expect: { 'violation:lane': 0 } }),
+  run('defender in the lane is fine (only the team with the ball)', () => ({ ps: [player(0.3), player(1.0)], ball: null }), [wait(0.3), dribbleFor(0, 4.5)], { lane: { x1: 0.9 / A, x2: 1.1 / A }, expect: { 'violation:lane': 0 } }),
+  run('shot clock (5 s) runs out', far, [wait(0.3), dribbleFor(0, 6.5)], { rules: { shotClock: 5 }, expect: { 'violation:shotclock': 1 } }),
+  run('shot clock resets on a shot', far, [wait(0.3), dribbleFor(0, 3), hold(0, 0.4), shotAt(0, false), wait(0.4), dribbleFor(0, 3)], { rules: { shotClock: 5 }, hoop: HOOP, expect: { 'violation:shotclock': 0, shot: 1 } }),
 ];
 
 // identity: two players cross; shirts keep them apart

@@ -108,14 +108,20 @@ export const FOULS = {
   offensive: { title: 'OFFENSIVE FOUL', signal: 'Fist behind the head', tip: 'With the ball, no pushing off. Use a move or a pivot to make space.' },
 };
 
-export const DEFAULT_RULES = { toPoints: 11, foulOut: 5, bonusAt: 5, stepsAllowed: 2 };
+export const VIOLATIONS = {
+  lane: { title: '3 SECONDS', signal: 'Three fingers up', tip: 'Don\'t camp in the lane. Cut through it and get out.' },
+  shotclock: { title: 'SHOT CLOCK', signal: 'Tap the top of your head', tip: 'Look for your shot earlier. Attack before the clock runs out.' },
+};
+
+export const DEFAULT_RULES = { toPoints: 11, foulOut: 5, bonusAt: 5, stepsAllowed: 2, shotClock: 0, carry: true };
 
 export class Game {
   constructor({ format = '1v1', rules = {} } = {}) {
     this.format = format; this.n = format === '2v2' ? 4 : 2;
     this.teamOf = this.n === 2 ? [0, 1] : [0, 0, 1, 1];
     this.rules = { ...DEFAULT_RULES, ...rules };
-    this.refs = Array.from({ length: this.n }, () => new Ref({ stepsAllowed: this.rules.stepsAllowed }));
+    this.refs = Array.from({ length: this.n }, () => new Ref({ stepsAllowed: this.rules.stepsAllowed, carry: this.rules.carry }));
+    this.clock = this.rules.shotClock || 0; this.clockOn = false; this.laneT = Array(this.n).fill(0);
     this.stats = Array.from({ length: this.n }, () => ({ pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, pf: 0, trv: 0, dd: 0, dr: 0, bestStreak: 0, clean: 0, fouledOut: false }));
     this.score = [0, 0]; this.teamFouls = [0, 0];
     this.poss = null; this.possCand = null; this.possCandT = 0;
@@ -125,7 +131,8 @@ export class Game {
   }
 
   // poses: per player slot (landmarks or null); ball {x,y,r} or null
-  update({ t, aspect = 16 / 9, poses, ball = null, hoop = null, threeLine = null }) {
+  // lane: {x1, x2} the paint's edges on the floor (3 seconds); bounds: the out-of-bounds line
+  update({ t, aspect = 16 / 9, poses, ball = null, hoop = null, threeLine = null, lane = null, bounds = null }) {
     const ev = (this.ev = []); this.t = t;
     const dt = this.lastT == null ? 1 / 30 : Math.min(0.25, Math.max(0.001, t - this.lastT)); this.lastT = t;
     if (this.over) return ev;
@@ -150,23 +157,50 @@ export class Game {
 
     // ---- refs (only the player with the ball "has" it)
     this.refs.forEach((r, i) => {
-      for (const e of r.update({ t, aspect, pose: poses[i], ball: i === this.poss ? ball : null, hoop })) this.onRef(i, e, bodies, threeLine, hoop, aspect);
+      for (const e of r.update({ t, aspect, pose: poses[i], ball: i === this.poss ? ball : null, hoop, bounds })) this.onRef(i, e, bodies, threeLine, hoop, aspect);
     });
 
     // ---- shooting foul waiting for the shot to finish
     if (this.andOne && t - this.andOne.t > 1.3 && !this.refs[this.andOne.who].shot) { const a = this.andOne; this.andOne = null; this.startFT(a.who, a.value, t); }
 
-    // ---- fouls
+    // ---- fouls, 3 seconds, shot clock
     if (!this.ft && t >= this.dead) this.checkFouls(bodies, B, dt, t);
+    if (!this.ft && t >= this.dead && !this.over) { this.checkLane(bodies, lane, aspect, dt); this.tickClock(dt); }
     this.prevHands = bodies.map((b) => b ? b.hands.map((h) => h && { ...h }) : null);
     this.prevHip = bodies.map((b) => b && { ...b.hip });
     return ev;
+  }
+
+  checkLane(bodies, lane, aspect, dt) {
+    const team = this.poss != null ? this.teamOf[this.poss] : -1;
+    const shot = this.poss != null && this.refs[this.poss].shot;
+    for (let i = 0; i < this.n; i++) {
+      const b = bodies[i];
+      const lx = lane ? Math.min(lane.x1, lane.x2) * aspect : 0, rx = lane ? Math.max(lane.x1, lane.x2) * aspect : 0;
+      const inLane = lane && b && this.teamOf[i] === team && !shot && b.footX > lx && b.footX < rx;
+      this.laneT[i] = inLane ? this.laneT[i] + dt : 0;
+      if (this.laneT[i] > 3) { this.laneT[i] = 0; this.gameViolation(i, 'lane', 'In the lane for more than 3 seconds'); return; }
+    }
+  }
+  tickClock(dt) {
+    if (!this.rules.shotClock || !this.clockOn || this.poss == null) return;
+    this.clock -= dt;
+    if (this.clock <= 0) { this.clock = this.rules.shotClock; this.clockOn = false; this.gameViolation(this.poss, 'shotclock', 'The shot clock ran out'); }
+  }
+  resetClock(on = true) { this.clock = this.rules.shotClock || 0; this.clockOn = on; }
+  gameViolation(i, kind, why) {
+    const s = this.stats[i]; s.to = (s.to || 0) + 1;
+    const e = { type: 'violation', kind, why, who: i, team: this.teamOf[i], ...VIOLATIONS[kind] };
+    this.ev.push(e); this.last = { kind: 'violation', who: i, e };
+    for (const r of this.refs) { r.clearPossession(); r.dead = this.t + 1.5; }
+    this.turnover(i);
   }
 
   setPoss(i, t) {
     if (this.poss != null && this.poss !== i) this.refs[this.poss].loseBall();
     const changed = this.poss == null || this.teamOf[this.poss] !== this.teamOf[i];
     this.poss = i; this.possCand = null;
+    if (changed || !this.clockOn) this.resetClock(true);
     this.ev.push({ type: 'possession', who: i, team: this.teamOf[i], changed });
   }
 
@@ -179,12 +213,13 @@ export class Game {
       if (e.type === 'shot') { this.ev.push({ type: 'ftShot', who: i, n: this.ft.total - this.ft.left + 1, of: this.ft.total }); return; }
     }
     switch (e.type) {
-      case 'dribble': s.dr++; s.bestStreak = Math.max(s.bestStreak, e.streak); break;
+      case 'dribble': s.dr++; s.bestStreak = Math.max(s.bestStreak, e.streak); if (!this.clockOn && i === this.poss) this.resetClock(true); break;
+      case 'gather': if (!this.clockOn && i === this.poss) this.resetClock(true); break;
       case 'clean': s.clean++; break;
       case 'violation':
         // pushed or held players stumble: no travel on someone an opponent just touched
         if (e.kind === 'travel' && this.t - (this.touchedT[i] ?? -9) < 0.7) return;
-        if (e.kind === 'travel') s.trv++; else s.dd++;
+        if (e.kind === 'travel') s.trv++; else if (e.kind === 'double') s.dd++; else s.to = (s.to || 0) + 1;
         out.type = 'violation'; this.ev.push(out); this.turnover(i); this.last = { kind: 'violation', who: i, e };
         return;
       case 'shot': {
@@ -195,6 +230,7 @@ export class Game {
           three = (b.footX - lx) * side > 0;
         }
         this.shots[i] = { three, t: this.t };
+        this.resetClock(false); // a shot resets the clock; it starts again when someone has the ball
         s.fga++; if (three) s.tpa++;
         out.three = three;
         break;
@@ -250,7 +286,7 @@ export class Game {
 
   turnover(i) {
     for (const r of this.refs) r.loseBall();
-    this.poss = null; this.dead = this.t + 2;
+    this.poss = null; this.dead = this.t + 2; this.resetClock(false);
     this.ev.push({ type: 'turnover', who: i, team: this.teamOf[i], ballTo: 1 - this.teamOf[i] });
   }
 
@@ -332,7 +368,8 @@ export class Game {
       if (s.fouledOut && s.pf < this.rules.foulOut) s.fouledOut = false;
       this.ft = L.prevFT || null; this.andOne = null;
     } else {
-      const s = this.stats[L.who]; if (L.e.kind === 'travel') s.trv = Math.max(0, s.trv - 1); else s.dd = Math.max(0, s.dd - 1);
+      const s = this.stats[L.who], k = L.e.kind;
+      if (k === 'travel') s.trv = Math.max(0, s.trv - 1); else if (k === 'double') s.dd = Math.max(0, s.dd - 1); else s.to = Math.max(0, (s.to || 0) - 1);
     }
     this.dead = 0; for (const r of this.refs) { r.dead = 0; r.deadPending = false; }
     this.last = null; return true;

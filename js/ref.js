@@ -24,11 +24,13 @@ const mid = (a, b) => ({ X: (a.X + b.X) / 2, Y: (a.Y + b.Y) / 2 });
 export const CALLS = {
   travel: { title: 'TRAVELING', signal: 'Roll the arms', tip: 'Pick a pivot foot and keep it planted, or dribble before you move your feet.' },
   double: { title: 'DOUBLE DRIBBLE', signal: 'Pat the air with both hands', tip: 'Once you pick the ball up, your dribble is over. Pass or shoot.' },
+  carry: { title: 'CARRYING', signal: 'Half-turn of the hand', tip: 'Keep your hand on top of the ball. Push it down, don\'t scoop under it.' },
+  out: { title: 'OUT OF BOUNDS', signal: 'Point the other way', tip: 'Watch the line. Stay in with both feet and keep your dribble inside.' },
 };
 
 export class Ref {
   constructor(opts = {}) {
-    this.opts = { stepsAllowed: 2, ...opts };
+    this.opts = { stepsAllowed: 2, carry: true, ...opts };
     this.totalDribbles = 0;
     this.reset();
   }
@@ -63,7 +65,9 @@ export class Ref {
     };
   }
 
-  update({ t, aspect = 16 / 9, pose = null, ball = null, hoop = null }) {
+  // bounds: {x1, y1, x2, y2, side} a line on the floor; side = which side of it (+1 / -1) is in play
+  update({ t, aspect = 16 / 9, pose = null, ball = null, hoop = null, bounds = null }) {
+    this.bounds = bounds; this.aspect = aspect;
     const ev = (this.ev = []);
     this.t = t;
     const dt = this.lastT == null ? 1 / 30 : Math.min(0.25, Math.max(0.001, t - this.lastT));
@@ -120,7 +124,11 @@ export class Ref {
     if (near) { this.lastHandT = t; if (B) this.handBallY = B.Y; }
     if (near === 1 && B && B.Y > body.hipY - 0.3 * S) this.dribbleHand = nearHand;
 
-    if (live) { this.possession(B || virt, near, body, dt, t, !!virt); this.pumps(body, t, dt, live); }
+    if (live) {
+      this.possession(B || virt, near, body, dt, t, !!virt); this.pumps(body, t, dt, live);
+      this.checkCarry(B, body, near, nearHand, dt, t);
+      this.checkFeetOut(body, t);
+    }
     this.trackShot(B, hoop, aspect);
     return ev;
   }
@@ -263,6 +271,7 @@ export class Ref {
         if (this.descMaxY > body.hipY + 0.15 * S && t - this.lastHandT < 1.2 && !this.shot) {
           let bi = -1, bd = 1e9; body.hands.forEach((h, i) => { if (h && Math.abs(h.X - B.X) < bd) { bd = Math.abs(h.X - B.X); bi = i; } });
           if (bi >= 0 && bd < 0.8 * S) this.dribbleHand = bi;
+          if (this.outside(B.X, this.descMaxY, 0)) { this.call('out', 'The ball bounced out'); return; }
           this.bounce(t, 'ball');
         }
       }
@@ -332,6 +341,30 @@ export class Ref {
     if (!this.dribbling && !ballLow) return;
     if (this.dribbling && t - this.lastBounceT > 1.4) return;
     this.bounce(t, 'hand');
+  }
+
+  // CARRYING: mid-dribble, the palm gets under the ball and lifts it (a normal dribble pushes from on top)
+  checkCarry(B, body, near, nearHand, dt, t) {
+    const S = this.S;
+    if (!this.opts.carry || !B || this.held || !this.dribbling || near !== 1 || t - this.lastBounceT > 1.0) { this.carryAcc = 0; return; }
+    const h = body.hands[nearHand];
+    const under = h && h.Y > B.Y + B.R * 0.35; // hand below the ball's middle
+    if (under && this.vy < -0.8 * S) this.carryAcc = (this.carryAcc || 0) + dt; else this.carryAcc = Math.max(0, (this.carryAcc || 0) - dt);
+    if (this.carryAcc > 0.15) { this.carryAcc = 0; this.call('carry', 'Hand under the ball while dribbling'); }
+  }
+  // signed side of the bounds line for a point (aspect units): > margin = out
+  outside(X, Y, margin) {
+    const b = this.bounds; if (!b) return false;
+    const a = this.aspect, ax = b.x1 * a, ay = b.y1, bx = b.x2 * a, by = b.y2, L = Math.hypot(bx - ax, by - ay) || 1;
+    const d = ((bx - ax) * (Y - ay) - (by - ay) * (X - ax)) / L; // + on one side, - on the other
+    return d * b.side < -margin;
+  }
+  // OUT OF BOUNDS: with the ball (holding or dribbling), a foot comes down past the line
+  checkFeetOut(body, t) {
+    if (!this.bounds || !(this.held || this.dribbling)) { this.outAcc = 0; return; }
+    const outFoot = this.feet.some((f, i) => f.p && !f.moving && body.feet[i] && this.outside(f.p.X, f.p.Y, 0.08 * this.S));
+    this.outAcc = outFoot ? (this.outAcc || 0) + 1 : 0;
+    if (this.outAcc >= 4) { this.outAcc = 0; this.call('out', 'Stepped out with the ball'); }
   }
 
   // game mode: someone else has the ball now

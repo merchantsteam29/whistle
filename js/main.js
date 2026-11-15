@@ -5,6 +5,11 @@ import { createPose, createBallDetector, BONES } from './pose.js';
 import { Game, Court } from './game.js';
 import { sound, unlock, whistle, say, beep, swish } from './audio.js';
 import * as P from './progress.js';
+import { analyzeShot, FORM_NAMES } from './form.js';
+import { Turns } from './turns.js';
+import { Highlights } from './highlights.js';
+import { renderDashboard } from './dashboard.js';
+import { call, setPack, preview, PACKS } from './voice.js';
 
 const $ = (s) => document.querySelector(s);
 const Q = new URLSearchParams(location.search);
@@ -14,7 +19,8 @@ let videoSrc = Q.get('src');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const cfg = P.settings();
-const TEAM_COLORS = ['#ff7a1a', '#3d9bff'];
+const teamColor = (t) => cfg.teams?.[t]?.color || ['#ff7a1a', '#3d9bff'][t];
+const COLORS = ['#ff7a1a', '#3d9bff', '#e5484d', '#22c983', '#ffc53d', '#a259ff', '#f472b6', '#eef3fb'];
 
 // ---------- icons ----------
 const IC = {
@@ -48,6 +54,7 @@ function go(id) {
   if (id === 'sHome') renderHome();
   if (id === 'sProfile') renderProfile();
   if (id === 'sSettings') renderSettings();
+  if (id === 'sDash') renderDash();
   if (id !== 'sSession') { stopCamera(); dropVideo(); }
 }
 document.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
@@ -79,6 +86,7 @@ function renderHome() {
 $('#btnStart').onclick = () => {
   unlock();
   if (mode === 'game') { openGameSetup(); return; }
+  if (mode === 'horse') { openTurns(); return; }
   if (!P.current()) { openPlayers(); return; }
   enterSession();
 };
@@ -116,12 +124,17 @@ function renderGameSetup() {
   $('#gAway').innerHTML = Array.from({ length: n / 2 }, (_, k) => opt(n / 2 + k)).join('');
   document.querySelectorAll('[data-slot]').forEach((s) => s.onchange = () => { cfg.roster[+s.dataset.slot] = s.value || null; P.save(); });
   $('[data-addp]').onclick = openPlayers;
+  $('#gTeams').innerHTML = [0, 1].map((t) => `<div><input type="text" maxlength="14" data-tname="${t}" value="${esc(cfg.teams[t].name)}" style="width:100%"><div class="swatches">${COLORS.map((c) => `<button data-tcol="${t}" data-c="${c}" class="${cfg.teams[t].color === c ? 'on' : ''}" style="background:${c}" title="Team colour" aria-label="Team colour ${c}"></button>`).join('')}</div></div>`).join('');
+  document.querySelectorAll('[data-tname]').forEach((i) => i.oninput = () => { cfg.teams[+i.dataset.tname].name = i.value.trim() || (+i.dataset.tname ? 'Away' : 'Home'); P.save(); });
+  document.querySelectorAll('[data-tcol]').forEach((b) => b.onclick = () => { cfg.teams[+b.dataset.tcol].color = b.dataset.c; P.save(); renderGameSetup(); });
+  $('#gClock').value = String(GR.shotClock || 0);
   $('#gTo').value = String(GR.toPoints); $('#gFoulOut').value = String(GR.foulOut); $('#gBonus').value = String(GR.bonusAt);
 }
 document.querySelectorAll('#gFormat button').forEach((b) => b.onclick = () => { GR.format = b.dataset.v; P.save(); renderGameSetup(); });
 $('#gTo').onchange = () => { GR.toPoints = +$('#gTo').value; P.save(); };
 $('#gFoulOut').onchange = () => { GR.foulOut = +$('#gFoulOut').value; P.save(); };
 $('#gBonus').onchange = () => { GR.bonusAt = +$('#gBonus').value; P.save(); };
+$('#gClock').onchange = () => { GR.shotClock = +$('#gClock').value; P.save(); };
 $('#mGameClose').onclick = () => $('#mGame').classList.remove('on');
 $('#gGo').onclick = () => {
   const ids = cfg.roster.slice(0, slotCount()).filter(Boolean);
@@ -135,6 +148,8 @@ function renderSettings() {
   $('#setWhistle').checked = cfg.whistle; $('#setVoice').checked = cfg.voice; $('#setVolume').value = cfg.volume;
   $('#setQuality').value = cfg.quality; $('#setSens').value = cfg.sensitivity; $('#setSkeleton').checked = cfg.skeleton; $('#setMirror').checked = cfg.mirror;
   $('#setAI').checked = cfg.aiBall; $('#setTrack').checked = !!cfg.trackView;
+  $('#setPack').value = cfg.voicePack; $('#setVoiceDesc').textContent = PACKS[cfg.voicePack]?.desc || '';
+  $('#setCarry').checked = cfg.carry; $('#setForm').checked = cfg.formCoach;
   $('#setBallTxt').innerHTML = cfg.ballColor ? `<span class="swatch" style="background:${hsvCss(cfg.ballColor)}"></span>Learned from your ball` : 'Learned automatically (AI) or standard orange';
 }
 function bindSetting(sel, key, read) { $(sel).addEventListener('input', () => { cfg[key] = read($(sel)); applySettings(); P.save(); }); }
@@ -148,6 +163,11 @@ bindSetting('#setSkeleton', 'skeleton', (el) => el.checked);
 bindSetting('#setMirror', 'mirror', (el) => el.checked);
 bindSetting('#setAI', 'aiBall', (el) => el.checked);
 bindSetting('#setTrack', 'trackView', (el) => el.checked);
+bindSetting('#setPack', 'voicePack', (el) => el.value);
+bindSetting('#setCarry', 'carry', (el) => el.checked);
+bindSetting('#setForm', 'formCoach', (el) => el.checked);
+$('#setPack').addEventListener('change', () => { $('#setVoiceDesc').textContent = PACKS[cfg.voicePack]?.desc || ''; });
+$('#packTry').onclick = () => { unlock(); preview(cfg.voicePack); };
 $('#setBallReset').onclick = () => { cfg.ballColor = null; applySettings(); P.save(); renderSettings(); };
 $('#setVolume').addEventListener('change', () => beep(880, 0.1));
 function applySettings() {
@@ -156,6 +176,7 @@ function applySettings() {
   tracker.tol = cfg.sensitivity;
   tracker.setColor(cfg.ballColor || DEFAULT_COLOR);
   finder.autoColor = !cfg.ballColor; finder.useAI = cfg.aiBall;
+  setPack(cfg.voicePack); ref.setOptions({ carry: cfg.carry });
 }
 function hsvCss(c) { return `hsl(${c.h.toFixed(0)} ${(c.s * 100).toFixed(0)}% ${(c.v * 50).toFixed(0)}%)`; }
 
@@ -164,6 +185,9 @@ const video = $('#video'), canvas = $('#overlay'), g = canvas.getContext('2d'), 
 const ref = new Ref({ stepsAllowed: cfg.stepsAllowed });
 const tracker = new BallTracker();
 const finder = new BallFinder(tracker);
+const hl = new Highlights(video, canvas, stage);
+const poseHist = [[], [], [], []], pendingForm = [];
+let gameForm = [[], [], [], []], curT = 0, turns = null;
 applySettings();
 
 let stream = null, pose = null, running = false, phase = 'off'; // off | setup | count | live | paused | done
@@ -221,9 +245,12 @@ async function enterSession() {
   phase = 'setup'; tapMode = 'ball'; hoopPts = []; session = null; game = null; lastCall = null; lastShot = null;
   court = new Court(isGame() ? slotCount() : 1);
   ref.reset(); finder.reset(); learn.done = false; learn.hits.length = 0; applySettings();
+  hl.reset(); turns = null; poseHist.forEach((h) => (h.length = 0)); pendingForm.length = 0; gameForm = [[], [], [], []];
+  ['#turnBoard', '#turnBanner', '#formCard'].forEach((q) => $(q).classList.add('hidden'));
   ['#scoreboard', '#gameboard', '#poss', '#cPause', '#cWave', '#cFix', '#cAddShot', '#cRef', '#refPad', '#cEnd', '#ask', '#count'].forEach((s) => $(s).classList.add('hidden'));
   $('#setup').classList.remove('hidden'); $('#cBack').classList.remove('hidden'); $('#cFlip').classList.remove('hidden');
   $('#chkThree').classList.toggle('hidden', !isGame());
+  $('#chkLane').classList.toggle('hidden', !isGame());
   $('#chkBodyTitle').textContent = isGame() ? `All ${slotCount()} players in view` : 'Whole body in view';
   updateSetup();
   showLoading('WARMING UP', 'Starting the camera…');
@@ -285,18 +312,21 @@ function process(now) {
   lastPose = slotPoses[0] || null;
   const people = slotPoses.filter(Boolean).map((lm) => personOf(lm, aspect));
   autoLearn(people[0], aspect);
+  slotPoses.forEach((lm, i) => { if (!lm || i > 3) return; const h = poseHist[i]; h.push({ t, lm }); while (h.length && t - h[0].t > 2.5) h.shift(); });
+  while (pendingForm.length && t >= pendingForm[0].due) { const f = pendingForm.shift(); formResult(f.who, analyzeShot(poseHist[f.who], f.t, aspect)); }
   finder.hoop = cfg.hoop;
   lastBall = finder.find(t, video, now, people, aspect);
   // speed: frames per second, and drop to Fast tracking if Accurate can't keep up
   fpsM.n++; if (now - fpsM.t0 > 1000) { fpsM.fps = Math.round((fpsM.n * 1000) / (now - fpsM.t0)); fpsM.n = 0; fpsM.t0 = now; checkSpeed(now); }
   if (TEST) { const S = TSTATS; S.frames++; if (lastPose) S.pose++; if (lastBall) S.ball++; if (lastBall?.src === 'ai') S.ai++; S.ms += performance.now() - t0; }
   if (phase === 'live') {
-    if (game) handleGame(game.update({ t, aspect, poses: slotPoses, ball: lastBall, hoop: cfg.hoop, threeLine: cfg.threeLine }));
+    curT = t;
+    if (game) handleGame(game.update({ t, aspect, poses: slotPoses, ball: lastBall, hoop: cfg.hoop, threeLine: cfg.threeLine, lane: cfg.lane, bounds: liveBounds() }));
     else {
-      for (const e of ref.update({ t, aspect, pose: lastPose, ball: lastBall, hoop: cfg.hoop })) onEvent(e);
+      for (const e of ref.update({ t, aspect, pose: lastPose, ball: lastBall, hoop: cfg.hoop, bounds: turns ? null : liveBounds() })) onEvent(e);
       if (TEST && Q.has('trace')) { const b = ref.body, f = (v) => v == null ? '-' : v.toFixed(2); TRACE.push(`${f(t)} ball ${lastBall ? f(lastBall.x) + ',' + f(lastBall.y) + ' r' + lastBall.r.toFixed(3) + ' ' + lastBall.src : '-'} hands ${b ? b.hands.map((h) => h ? f(h.X / aspect) + ',' + f(h.Y) : 'x').join(' ') : 'nobody'} S ${f(ref.S)} near ${ref.near} held ${ref.held} | ${finder.dbg}`); }
-      const m = P.MODES[session.mode];
-      if (m.secs && session.seconds >= m.secs && !endTimer) { session.seconds = m.secs; session.complete = true; whistle(0.7, 2); say('Time!'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
+      const m = P.MODES[session ? session.mode : 'free'];
+      if (session && m.secs && session.seconds >= m.secs && !endTimer) { session.seconds = m.secs; session.complete = true; whistle(0.7, 2); call('time'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
     }
     updateHUD();
   } else if (phase === 'setup' || phase === 'count') {
@@ -377,6 +407,21 @@ function drawOverlay() {
     }
     for (const p of pts) { g.beginPath(); g.arc(p.x * W, p.y * H, 6 * dpr, 0, Math.PI * 2); g.fill(); }
   }
+  const dline = (a, b, col, dash) => { g.setLineDash(dash ? [12 * dpr, 8 * dpr] : []); g.lineWidth = 3 * dpr; g.strokeStyle = col; g.beginPath(); g.moveTo(a.x * W, a.y * H); g.lineTo(b.x * W, b.y * H); g.stroke(); g.setLineDash([]); };
+  if (cfg.bounds || (tapMode === 'bounds' && linePts.length)) {
+    const b = cfg.bounds && tapMode !== 'bounds' ? cfg.bounds : null;
+    if (b) { const dx = b.x2 - b.x1, dy = b.y2 - b.y1; dline({ x: b.x1 - dx * 3, y: b.y1 - dy * 3 }, { x: b.x2 + dx * 3, y: b.y2 + dy * 3 }, 'rgba(255,70,85,.85)', true); }
+    for (const q of tapMode === 'bounds' ? linePts : []) { g.fillStyle = '#ff4655'; g.beginPath(); g.arc(q.x * W, q.y * H, 6 * dpr, 0, Math.PI * 2); g.fill(); }
+  }
+  if (isGame() && (cfg.lane || (tapMode === 'lane' && linePts.length))) {
+    if (cfg.lane && tapMode !== 'lane') { g.fillStyle = 'rgba(61,155,255,.12)'; g.fillRect(cfg.lane.x1 * W, cfg.lane.y * H - H * 0.12, (cfg.lane.x2 - cfg.lane.x1) * W, H * 0.2); dline({ x: cfg.lane.x1, y: cfg.lane.y }, { x: cfg.lane.x2, y: cfg.lane.y }, 'rgba(61,155,255,.8)', true); }
+    for (const q of tapMode === 'lane' ? linePts : []) { g.fillStyle = '#3d9bff'; g.beginPath(); g.arc(q.x * W, q.y * H, 6 * dpr, 0, Math.PI * 2); g.fill(); }
+  }
+  if (turns?.spot) {
+    const x = turns.spot.x * W, y = turns.spot.y * H;
+    g.strokeStyle = '#ffc53d'; g.lineWidth = 4 * dpr; g.beginPath(); g.ellipse(x, y, 34 * dpr, 12 * dpr, 0, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = 'rgba(255,197,61,.25)'; g.fill();
+  }
   if (isGame() && cfg.threeLine) {
     const x = cfg.threeLine.x * W, y = cfg.threeLine.y * H;
     g.setLineDash([10 * dpr, 8 * dpr]); g.lineWidth = 3 * dpr; g.strokeStyle = 'rgba(255,197,61,.8)';
@@ -386,7 +431,7 @@ function drawOverlay() {
   if (cfg.skeleton || phase === 'setup') {
     slotPoses.forEach((lm, i) => {
       if (!lm) return;
-      const col = isGame() ? TEAM_COLORS[teamOfSlot(i)] : 'rgba(238,243,251,.8)';
+      const col = isGame() ? teamColor(teamOfSlot(i)) : 'rgba(238,243,251,.8)';
       g.lineCap = 'round'; g.lineWidth = 4 * dpr; g.strokeStyle = col; g.globalAlpha = isGame() ? 0.85 : 1;
       g.beginPath();
       for (const [a, b] of BONES) {
@@ -437,7 +482,11 @@ function updateSetup() {
   setChk('#chkHoop', !!cfg.hoop && tapMode !== 'hoop', tapMode === 'hoop', hoopTxt);
   $('#hoopMark').textContent = cfg.hoop ? 'Redo hoop' : 'Mark hoop';
   $('#hoopClear').classList.toggle('hidden', !cfg.hoop);
+  setChk('#chkBounds', !!cfg.bounds && tapMode !== 'bounds', tapMode === 'bounds', tapMode === 'bounds' ? (linePts.length ? 'Now tap a second point further along the same line.' : 'Tap a point on the line, on the floor.') : cfg.bounds ? 'Marked. Stepping or bouncing past it with the ball is out.' : 'For out-of-bounds calls: tap two points along the line on the floor.');
+  $('#boundsMark').textContent = cfg.bounds ? 'Redo line' : 'Mark sideline'; $('#boundsClear').classList.toggle('hidden', !cfg.bounds);
   if (isGame()) {
+    setChk('#chkLane', !!cfg.lane && tapMode !== 'lane', tapMode === 'lane', tapMode === 'lane' ? (linePts.length ? 'Now tap the RIGHT edge of the paint.' : 'Tap the LEFT edge of the paint, on the floor.') : cfg.lane ? 'Marked. Standing in the paint for more than 3 seconds with your team on offense is a violation.' : 'For 3-second calls: tap the left edge of the paint on the floor, then the right edge.');
+    $('#laneMark').textContent = cfg.lane ? 'Redo lane' : 'Mark lane'; $('#laneClear').classList.toggle('hidden', !cfg.lane);
     const t3 = tapMode === 'three' ? 'Tap the FLOOR right on the 3-point line.' : cfg.threeLine ? (cfg.hoop ? 'Marked. Makes from further out than the line count 3.' : 'Marked. Mark the hoop too so it knows which side is "out".') : 'Tap the floor where the 3-point line is. Makes from further out count 3.';
     setChk('#chkThree', !!cfg.threeLine && tapMode !== 'three', tapMode === 'three', t3);
     $('#threeMark').textContent = cfg.threeLine ? 'Redo line' : 'Mark 3-pt line';
@@ -455,6 +504,11 @@ $('#hoopMark').onclick = () => { tapMode = 'hoop'; hoopPts = []; updateSetup(); 
 $('#hoopClear').onclick = () => { cfg.hoop = null; tapMode = 'ball'; hoopPts = []; P.save(); updateSetup(); };
 $('#threeMark').onclick = () => { tapMode = 'three'; updateSetup(); };
 $('#threeClear').onclick = () => { cfg.threeLine = null; tapMode = 'ball'; P.save(); updateSetup(); };
+let linePts = [];
+$('#boundsMark').onclick = () => { tapMode = 'bounds'; linePts = []; updateSetup(); };
+$('#boundsClear').onclick = () => { cfg.bounds = null; tapMode = 'ball'; P.save(); updateSetup(); };
+$('#laneMark').onclick = () => { tapMode = 'lane'; linePts = []; updateSetup(); };
+$('#laneClear').onclick = () => { cfg.lane = null; tapMode = 'ball'; P.save(); updateSetup(); };
 
 stage.addEventListener('pointerdown', (e) => {
   if (phase !== 'setup') return;
@@ -466,6 +520,14 @@ stage.addEventListener('pointerdown', (e) => {
     if (hoopPts.length === 2) {
       const [a, b] = hoopPts[0].x <= hoopPts[1].x ? hoopPts : [hoopPts[1], hoopPts[0]];
       cfg.hoop = { x1: a.x, y1: a.y, x2: b.x, y2: b.y }; P.save(); tapMode = 'ball'; hoopPts = []; beep(1200, 0.08);
+    }
+  } else if (tapMode === 'bounds' || tapMode === 'lane') {
+    linePts.push({ x: nx, y: ny });
+    if (linePts.length === 2) {
+      const [a, b] = linePts;
+      if (tapMode === 'bounds') cfg.bounds = { x1: a.x, y1: a.y, x2: b.x, y2: b.y, side: 0 };
+      else cfg.lane = { x1: Math.min(a.x, b.x), x2: Math.max(a.x, b.x), y: (a.y + b.y) / 2 };
+      P.save(); tapMode = 'ball'; linePts = []; beep(1200, 0.08);
     }
   } else if (tapMode === 'three') {
     cfg.threeLine = { x: nx, y: ny }; P.save(); tapMode = 'ball'; beep(1200, 0.08);
@@ -489,12 +551,26 @@ $('#btnGo').onclick = () => {
   const iv = setInterval(() => {
     n--;
     if (n > 0) { c.textContent = n; beep(660, 0.15); return; }
-    clearInterval(iv); c.textContent = 'GO'; whistle(0.45); setTimeout(() => c.classList.add('hidden'), 600);
+    clearInterval(iv); c.textContent = 'GO'; whistle(0.45); call('go', null, null, 500); setTimeout(() => c.classList.add('hidden'), 600);
     startLive();
   }, 800);
 };
 
+// the side of the sideline the players start on is "in"
+function liveBounds() {
+  const b = cfg.bounds; if (!b) return null;
+  if (!b.side) {
+    const a = (video.videoWidth / video.videoHeight) || 16 / 9;
+    const lm = lastPose; let X = 0.5 * a, Y = 0.9;
+    if (lm && lm[27] && lm[28]) { X = ((lm[27].x + lm[28].x) / 2) * a; Y = (lm[27].y + lm[28].y) / 2; }
+    const ax = b.x1 * a, ay = b.y1, bx = b.x2 * a, by = b.y2;
+    b.side = Math.sign((bx - ax) * (Y - ay) - (by - ay) * (X - ax)) || 1;
+  }
+  return b;
+}
 function startLive() {
+  if (cfg.bounds) cfg.bounds.side = 0;
+  liveBounds();
   if (videoSrc && !Q.get('src')) { video.currentTime = 0; video.play().catch(() => {}); }
   lastCall = null; lastShot = null; endTimer = 0; applySettings();
   phase = 'live';
@@ -502,6 +578,7 @@ function startLive() {
   ['#cPause', '#cEnd'].forEach((s) => $(s).classList.remove('hidden'));
   $('#cPauseT').textContent = 'Pause';
   if (isGame()) { startGame(); return; }
+  if (mode === 'horse') { startTurns(); return; }
   session = P.newSession(mode); ref.reset();
   ['#scoreboard', '#poss'].forEach((s) => $(s).classList.remove('hidden'));
   $('#cAddShot').classList.toggle('hidden', !!cfg.hoop && session.mode !== 'shoot10');
@@ -545,25 +622,30 @@ $('#cFix').onclick = () => {
 $('#cAddShot').onclick = () => { if (phase !== 'live' || game) return; onEvent({ type: 'shot', manual: true }); askShot(); };
 $('#askYes').onclick = () => answer(true);
 $('#askNo').onclick = () => answer(false);
-function answer(yes) { closeAsk(); if (game) handleGame(game.resolve(yes)); else if (yes) made(false); else missed(); }
+function answer(yes) { closeAsk(); if (game) handleGame(game.resolve(yes)); else if (turns) turnShot(yes); else if (yes) made(false); else missed(); }
 function askShot() { $('#ask').classList.remove('hidden'); clearTimeout(askTimer); askTimer = setTimeout(() => answer(false), 7000); }
 function closeAsk() { clearTimeout(askTimer); $('#ask').classList.add('hidden'); }
 
 // ---------- single-player events -> stats, XP, calls ----------
 function onEvent(e) {
   if (TEST) TLOG.push({ t: +video.currentTime.toFixed(2), ...e });
+  if (turns) { turnEvent(e); return; }
   const s = session; if (!s) return;
   switch (e.type) {
     case 'dribble': {
       s.dribbles++; s.bestStreak = Math.max(s.bestStreak, e.streak);
       P.addXP(s, 'dribbles', P.XP.dribble);
       const bonus = P.XP.streak[e.streak];
-      if (bonus) { P.addXP(s, 'streaks', bonus); showCall('info', `${e.streak} IN A ROW`, `+${bonus} XP streak bonus`, 1100); say(`${e.streak}!`); }
+      if (bonus) { P.addXP(s, 'streaks', bonus); showCall('info', `${e.streak} IN A ROW`, `+${bonus} XP streak bonus`, 1100); call('streak', e.streak); }
+      if (e.streak === 10) hl.begin('streak', playerLabel());
+      if (e.streak === 25) hl.keep('25 IN A ROW', playerLabel());
       break;
     }
-    case 'streakEnd': if (e.streak >= 10 && e.reason !== 'violation') toast(`${e.streak}-dribble streak`); break;
+    case 'streakEnd': if (e.streak >= 10 && e.reason !== 'violation') toast(`${e.streak}-dribble streak`); if (hl.why === 'streak' && !hl.keepIt) hl.drop(); break;
     case 'clean': s.clean++; P.addXP(s, 'footwork', P.XP.clean); break;
     case 'shot':
+      if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', playerLabel()); }
+      if (cfg.formCoach && !e.manual) pendingForm.push({ who: 0, t: curT, due: curT + 0.75 });
       s.shots++; P.addXP(s, 'shots', P.XP.attempt);
       lastShot = { made: false, xp: 0, pending: true }; updateFix();
       break;
@@ -573,11 +655,11 @@ function onEvent(e) {
       else askShot();
       break;
     case 'violation': {
-      if (e.kind === 'travel') s.travels++; else s.doubles++;
+      if (e.kind === 'travel') s.travels++; else if (e.kind === 'double') s.doubles++; else s.other = (s.other || 0) + 1;
       s.makeRun = 0; lastCall = e;
       whistle(0.6);
       showCall('bad', e.title, `${e.why}<em>${e.signal} · ${e.tip}</em>`, 2600);
-      say(e.kind === 'travel' ? 'Traveling!' : 'Double dribble!', 350);
+      call(e.kind, null, null, 350);
       showWave();
       break;
     }
@@ -592,12 +674,13 @@ function made(fixing) {
   const xp = P.XP.make + Math.min(bonus, 30);
   P.addXP(s, 'shots', xp); lastShot.made = true; lastShot.pending = false; lastShot.xp = xp;
   swish(); showCall('good', s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET', `+${xp} XP${s.makeRun >= 2 ? ` · ${s.makeRun} in a row` : ''}`, 1500);
-  if (!fixing) say(s.makeRun >= 3 ? `${s.makeRun} straight!` : 'Bucket!');
+  if (!fixing) { if (s.makeRun >= 3) call('onfire', s.makeRun); else call('make'); hl.keep(s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET!', playerLabel()); }
   updateFix(); checkShotDrill();
 }
 function missed() {
   const s = session; if (!s) return;
   s.makeRun = 0; if (lastShot) { lastShot.pending = false; lastShot.made = false; }
+  if (hl.why === 'shot') hl.drop();
   toast('Miss. Shake it off'); updateFix(); checkShotDrill();
 }
 function checkShotDrill() {
@@ -613,18 +696,21 @@ function updateFix() {
 let gameClock = 0;
 const callQueue = [];
 function startGame() {
-  game = new Game({ format: GR.format, rules: { toPoints: GR.toPoints, foulOut: GR.foulOut, bonusAt: GR.bonusAt, stepsAllowed: cfg.stepsAllowed } });
+  game = new Game({ format: GR.format, rules: { toPoints: GR.toPoints, foulOut: GR.foulOut, bonusAt: GR.bonusAt, stepsAllowed: cfg.stepsAllowed, shotClock: GR.shotClock, carry: cfg.carry } });
+  $('#gbHome').style.borderLeft = `4px solid ${teamColor(0)}`; $('#gbAway').style.borderRight = `4px solid ${teamColor(1)}`;
   court.lock(); gameClock = 0;
   ['#gameboard', '#cRef'].forEach((s) => $(s).classList.remove('hidden'));
   $('#gbTo').textContent = GR.toPoints ? `TO ${GR.toPoints}` : 'GAME';
   const names = (team) => [0, 1, 2, 3].slice(0, slotCount()).filter((i) => teamOfSlot(i) === team).map(slotName).join(' & ');
-  $('#gbHomeName').textContent = slotCount() === 2 ? slotName(0) : 'Home'; $('#gbAwayName').textContent = slotCount() === 2 ? slotName(1) : 'Away';
+  $('#gbHomeName').textContent = slotCount() === 2 ? slotName(0) : cfg.teams[0].name; $('#gbAwayName').textContent = slotCount() === 2 ? slotName(1) : cfg.teams[1].name;
   $('#gbHome').title = names(0); $('#gbAway').title = names(1);
   updateHUD();
 }
-function slotPlayer(i) { const id = cfg.roster[i]; return id ? P.players().find((p) => p.id === id) : null; }
-function slotName(i) { const p = slotPlayer(i); return p ? p.name : `Guest ${teamOfSlot(i) ? 'A' : 'H'}${slotCount() === 4 ? (i % 2) + 1 : ''}`; }
-const teamName = (t) => (slotCount() === 2 ? slotName(t) : t ? 'Away' : 'Home');
+function slotPlayer(i) { const id = (mode === 'horse' ? cfg.troster : cfg.roster)[i]; return id ? P.players().find((p) => p.id === id) : null; }
+function slotName(i) { const p = slotPlayer(i); if (p) return p.name; if (mode === 'horse') return `Player ${i + 1}`; return `Guest ${teamOfSlot(i) ? 'A' : 'H'}${slotCount() === 4 ? (i % 2) + 1 : ''}`; }
+function slotLabel(i) { const p = slotPlayer(i); return p && p.num ? `#${p.num} ${p.name}` : slotName(i); }
+const teamName = (t) => (slotCount() === 2 ? slotName(t) : cfg.teams[t].name);
+const playerLabel = () => { const p = P.current(); return p ? (p.num ? `#${p.num} ` : '') + p.name : ''; };
 
 // calls come one at a time so a foul + "fouled out" + "free throws" are all readable
 function queueCall(kind, title, sub, ms, speak) {
@@ -633,7 +719,7 @@ function queueCall(kind, title, sub, ms, speak) {
 }
 function nextCall() {
   const c = callQueue[0]; if (!c) return;
-  showCall(c.kind, c.title, c.sub, c.ms); if (c.speak) say(c.speak, c.kind === 'bad' ? 300 : 0);
+  showCall(c.kind, c.title, c.sub, c.ms); if (typeof c.speak === 'function') c.speak(); else if (c.speak) say(c.speak, c.kind === 'bad' ? 300 : 0);
   setTimeout(() => { callQueue.shift(); nextCall(); }, c.ms + 150);
 }
 
@@ -645,25 +731,26 @@ function handleGame(evs) {
       case 'possession': if (e.changed) toast(`${teamName(e.team)} ball`); break;
       case 'violation':
         whistle(0.6); showWave();
-        queueCall('bad', e.title, `${nm} · ${esc(e.why)}<em>Ball to ${esc(teamName(1 - e.team))} · ${e.tip}</em>`, 2600, e.kind === 'travel' ? 'Traveling!' : 'Double dribble!');
+        queueCall('bad', e.title, `${nm} · ${esc(e.why)}<em>Ball to ${esc(teamName(1 - e.team))} · ${e.tip}</em>`, 2600, () => call(e.kind, null, null, 300));
         break;
       case 'foul': {
         whistle(0.5, e.result === 'shooting' ? 2 : 1); showWave();
         const res = e.result === 'shooting' ? (game.andOne ? 'Shooting foul. If it goes in: and-one!' : `${e.fts} free throws`) : e.result === 'bonus' ? 'Bonus: 2 free throws' : e.result === 'turnover' ? `Ball to ${esc(teamName(1 - e.team))}` : `Ball stays with ${esc(teamName(1 - e.team))}`;
-        queueCall('bad', e.title, `${nm} on ${esc(slotName(e.on))} · ${e.pf} personal foul${e.pf > 1 ? 's' : ''}<em>${res} · ${e.signal}. ${e.tip}</em>`, 3000, e.title.toLowerCase());
+        queueCall('bad', e.title, `${nm} on ${esc(slotName(e.on))} · ${e.pf} personal foul${e.pf > 1 ? 's' : ''}<em>${res} · ${e.signal}. ${e.tip}</em>`, 3000, () => call('foul', e.title.charAt(0) + e.title.slice(1).toLowerCase(), null, 300));
         break;
       }
       case 'fouledOut': queueCall('bad', 'FOULED OUT', `${nm} has ${game.stats[e.who].pf} fouls<em>Every foul from now on gives 2 free throws</em>`, 2400, `${slotName(e.who)} fouled out`); break;
-      case 'ftStart': queueCall('info', e.andOne ? 'AND ONE' : 'FREE THROWS', `${nm} shoots ${e.n}<em>Everyone else steps back</em>`, 2200, e.andOne ? 'And one!' : `${e.n} shots`); break;
+      case 'ftStart': queueCall('info', e.andOne ? 'AND ONE' : 'FREE THROWS', `${nm} shoots ${e.n}<em>Everyone else steps back</em>`, 2200, () => (e.andOne ? call('andone') : call('ft', e.n))); break;
       case 'ftResult': if (e.made) swish(); toast(`Free throw ${e.n} of ${e.of}: ${e.made ? 'good' : 'no good'}`, e.made); break;
       case 'points':
-        if (e.kind !== 'ft') { swish(); queueCall('good', e.kind === 'three' ? 'THREE!' : 'BUCKET', `${nm} +${e.pts}`, 1400, e.kind === 'three' ? 'Three!' : 'Bucket!'); }
+        if (e.kind !== 'ft') { swish(); queueCall('good', e.kind === 'three' ? 'THREE!' : 'BUCKET', `${nm} +${e.pts}`, 1400, () => call(e.kind === 'three' ? 'three' : 'make')); hl.keep(e.kind === 'three' ? 'THREE!' : 'BUCKET!', slotLabel(e.who)); }
         break;
-      case 'shotResult': if (!e.made) toast(`${slotName(e.who)}: miss`); break;
+      case 'shotResult': if (!e.made) { toast(`${slotName(e.who)}: miss`); if (hl.why === 'shot') hl.drop(); } break;
+      case 'shot': if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', slotLabel(e.who)); } if (cfg.formCoach) pendingForm.push({ who: e.who, t: curT, due: curT + 0.75 }); break;
       case 'needResult': askShot(); break;
       case 'gameOver':
         whistle(0.9, 2); phase = 'done';
-        queueCall('good', 'GAME!', `${esc(teamName(e.winner))} win${slotCount() === 2 ? 's' : ''} ${Math.max(...e.score)}-${Math.min(...e.score)}`, 2400, `Game! ${teamName(e.winner)} win${slotCount() === 2 ? 's' : ''}`);
+        queueCall('good', 'GAME!', `${esc(teamName(e.winner))} win${slotCount() === 2 ? 's' : ''} ${Math.max(...e.score)}-${Math.min(...e.score)}`, 2400, () => call('win', teamName(e.winner)));
         endTimer = setTimeout(endSession, 2800);
         break;
     }
@@ -680,11 +767,12 @@ function placeTags() {
   const W = stage.clientWidth, H = stage.clientHeight;
   slotPoses.forEach((lm, i) => {
     let el = box.querySelector(`[data-tag="${i}"]`);
-    if (!el) { el = document.createElement('div'); el.className = 'ptag'; el.dataset.tag = i; el.style.background = TEAM_COLORS[teamOfSlot(i)]; box.appendChild(el); }
+    if (!el) { el = document.createElement('div'); el.className = 'ptag'; el.dataset.tag = i; box.appendChild(el); }
+    el.style.background = teamColor(teamOfSlot(i));
     if (!lm || !lm[0]) { el.style.opacity = 0; return; }
     const x = mirror ? 1 - lm[0].x : lm[0].x, top = Math.min(...[0, 2, 5, 7, 8].map((k) => lm[k]?.y ?? 1));
     el.style.opacity = 1; el.style.left = (x * W) + 'px'; el.style.top = Math.max(22, (top - 0.03) * H) + 'px';
-    const pf = game ? game.stats[i].pf : 0, html = `${esc(slotName(i))}${game ? `<i>${pf} PF</i>` : ''}`;
+    const pf = game ? game.stats[i].pf : 0, html = `${esc(slotLabel(i))}${game ? `<i>${pf} PF</i>` : ''}`;
     if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
     el.classList.toggle('ball', !!game && game.poss === i);
   });
@@ -716,7 +804,8 @@ function updateHUD() {
     setText('#gbHomeScore', String(game.score[0])); setText('#gbAwayScore', String(game.score[1]));
     const fouls = (t) => `Fouls ${game.teamFouls[t]}${GR.bonusAt && game.teamFouls[1 - t] >= GR.bonusAt ? '<span class="bonus">BONUS</span>' : ''}`;
     setHTML('#gbHomeFouls', fouls(0)); setHTML('#gbAwayFouls', fouls(1));
-    setText('#gbClock', fmtTime(gameClock));
+    setText('#gbClock', game.rules.shotClock ? String(Math.max(0, Math.ceil(game.clock))) : fmtTime(gameClock));
+    setText('#gbTo', game.rules.shotClock ? 'SHOT CLOCK' : GR.toPoints ? `TO ${GR.toPoints}` : 'GAME');
     const pt = game.poss != null ? teamOfSlot(game.poss) : -1;
     $('#gbHome').classList.toggle('has', pt === 0); $('#gbAway').classList.toggle('has', pt === 1);
     return;
@@ -756,6 +845,8 @@ function updateHUD() {
 // ---------- end + summary ----------
 function endSession() {
   clearTimeout(endTimer); endTimer = 0; closeAsk(); hideCall(); callQueue.length = 0;
+  hl.drop();
+  if (turns) { const tn = turns; turns = null; phase = 'off'; stopCamera(); renderTurnsSummary(tn); go('sSummary'); return; }
   if (game) { const gm = game; game = null; phase = 'off'; stopCamera(); renderGameSummary(gm); go('sSummary'); return; }
   const s = session; if (!s) return;
   session = null; phase = 'off';
@@ -804,10 +895,13 @@ function renderSummary(s, res) {
       <div class="card"><p class="label">XP earned</p><div class="xprows">${xpRows.map(([k, v]) => `<div class="xprow"><span>${k}</span><b>+${v}</b></div>`).join('') || '<div class="xprow"><span>No XP this time</span></div>'}</div></div>
       <div class="card"><p class="label">Coach says</p><ul class="tips" style="margin:0;padding-left:18px">${coachTips(s).map((t) => `<li>${t}</li>`).join('')}</ul></div>
     </div>
-    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn primary" id="again">Play again</button></div>`;
+    ${formSummaryHTML(s.formScores)}
+    ${clipsHTML()}
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button>${drill?.score != null && boardsOn() ? '<button class="btn" id="postBoard">Post to today\'s leaderboard</button>' : ''}<button class="btn primary" id="again">Play again</button></div>`;
+  $('#postBoard')?.addEventListener('click', () => openBoard(s.mode, drill.score, res.player.name));
   $('#again').onclick = () => enterSession();
   animateBars(res ? [[res, 'sumBar']] : []);
-  if (up) { whistle(0.3); setTimeout(() => say(`Level up! ${lv.name}!`), 400); }
+  if (up) { whistle(0.3); call('levelup', lv.name, null, 400); }
   else if (res?.earned.length) say(`New badge: ${res.earned[0].name}`);
 }
 function playerCardHTML(res, up, barId, extra = '') {
@@ -828,7 +922,7 @@ function renderGameSummary(gm) {
     const st = gm.stats[i], team = gm.teamOf[i];
     const s = P.newSession('game');
     Object.assign(s, { seconds: gameClock, dribbles: st.dr, bestStreak: st.bestStreak, makes: st.fgm, shots: st.fga, travels: st.trv, doubles: st.dd, clean: st.clean,
-      points: st.pts, fouls: st.pf, threes: st.tpm, won: winner === team, score: [sc[team], sc[1 - team]] });
+      points: st.pts, fouls: st.pf, threes: st.tpm, won: winner === team, score: [sc[team], sc[1 - team]], formScores: gameForm[i] || [] });
     P.addXP(s, 'dribbles', st.dr * P.XP.dribble);
     P.addXP(s, 'shots', st.pts * P.XP.game.point);
     P.addXP(s, 'footwork', st.clean * P.XP.clean);
@@ -837,20 +931,21 @@ function renderGameSummary(gm) {
   }
   const row = (i) => {
     const st = gm.stats[i];
-    return `<tr><td><span class="dot" style="background:${TEAM_COLORS[gm.teamOf[i]]}"></span>${esc(slotName(i))}${st.fouledOut ? ' <span class="bonus">OUT</span>' : ''}</td><td><b>${st.pts}</b></td><td>${st.fgm}/${st.fga}</td><td>${st.tpm}/${st.tpa}</td><td>${st.ftm}/${st.fta}</td><td>${st.pf}</td><td>${st.trv + st.dd}</td><td>${st.dr}</td></tr>`;
+    return `<tr><td><span class="dot" style="background:${teamColor(gm.teamOf[i])}"></span>${esc(slotName(i))}${st.fouledOut ? ' <span class="bonus">OUT</span>' : ''}</td><td><b>${st.pts}</b></td><td>${st.fgm}/${st.fga}</td><td>${st.tpm}/${st.tpa}</td><td>${st.ftm}/${st.fta}</td><td>${st.pf}</td><td>${st.trv + st.dd}</td><td>${st.dr}</td></tr>`;
   };
   const tot = (t) => { const ids = [...Array(n).keys()].filter((i) => gm.teamOf[i] === t), S = (k) => ids.reduce((a, i) => a + gm.stats[i][k], 0); return `<tr class="tot"><td>${t ? 'AWAY' : 'HOME'}</td><td>${sc[t]}</td><td>${S('fgm')}/${S('fga')}</td><td>${S('tpm')}/${S('tpa')}</td><td>${S('ftm')}/${S('fta')}</td><td>${S('pf')}</td><td>${S('trv') + S('dd')}</td><td>${S('dr')}</td></tr>`; };
   const title = winner == null ? 'Tie game' : `${esc(teamName(winner))} win${n === 2 ? 's' : ''}`;
   $('#summary').innerHTML = `
     <div class="sumhead"><div class="k">${n === 2 ? '1 v 1' : '2 v 2'} · ${fmtTime(gameClock)}</div>
       <h2>${title}</h2>
-      <div style="font:800 64px/1 var(--display);margin-top:6px"><span style="color:${TEAM_COLORS[0]}">${sc[0]}</span> <span style="color:var(--faint)">–</span> <span style="color:${TEAM_COLORS[1]}">${sc[1]}</span></div></div>
+      <div style="font:800 64px/1 var(--display);margin-top:6px"><span style="color:${teamColor(0)}">${sc[0]}</span> <span style="color:var(--faint)">–</span> <span style="color:${teamColor(1)}">${sc[1]}</span></div></div>
     <p class="label">Box score</p>
     <div class="card scroll-x" style="padding:6px 10px;margin-bottom:16px"><table class="box"><tr><th>Player</th><th>PTS</th><th>FG</th><th>3PT</th><th>FT</th><th>PF</th><th>TO</th><th>DRB</th></tr>
       ${[0, 1].map((t) => [...Array(n).keys()].filter((i) => gm.teamOf[i] === t).map(row).join('') + (n === 4 ? tot(t) : '')).join('')}</table>
       <p style="color:var(--faint);font-size:12px;margin:8px 0 4px">PF personal fouls · TO travels + double dribbles · DRB dribbles</p></div>
     ${results.length ? `<p class="label">XP</p>${results.map((r, k) => playerCardHTML(r.res, r.res.after.n > r.res.before.n, 'gbar' + k, ` <span style="color:var(--orange)">+${r.s.xp} XP</span>${r.s.won ? ' <span class="pbflag">WIN</span>' : ''}`)).join('')}` : '<p style="color:var(--dim)">Guests don\'t earn XP. Pick saved players in Game setup to level up.</p>'}
     ${results.some((r) => r.res.earned.length) ? `<p class="label" style="margin-top:16px">New badges</p><div class="badges">${results.flatMap((r) => r.res.earned.map((b) => badgeHTML({ ...b, desc: `${esc(r.res.player.name)}: ${b.desc}` }, true, true))).join('')}</div>` : ''}
+    ${clipsHTML()}
     <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn primary" id="again">Rematch</button></div>`;
   $('#again').onclick = () => enterSession();
   animateBars(results.map((r, k) => [r.res, 'gbar' + k]));
@@ -894,6 +989,154 @@ function renderProfile() {
   $('#prDel').onclick = () => { if (confirm(`Delete ${p.name} and all their progress?`)) { P.removePlayer(p.id); renderProfile(); } };
 }
 
+// ---------- shooting form coach ----------
+let formTimer = 0;
+function formResult(who, r) {
+  if (!r) return;
+  if (game) gameForm[who]?.push(r.score);
+  else if (session) { session.formScores.push(r.score); if (r.score >= 8) P.addXP(session, 'footwork', 3); }
+  else if (turns) (turnForm[who] ||= []).push(r.score);
+  const el = $('#formCard');
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:baseline"><span class="label" style="margin:0">Shot form${game || turns ? ' · ' + esc(slotName(who)) : ''}</span><span class="sc">${r.score}<small style="font-size:16px;color:var(--dim)">/10</small></span></div>
+    <div class="row4">${Object.entries(r.parts).map(([k, v]) => `<div><i><u style="width:${Math.round(v * 100)}%"></u></i>${FORM_NAMES[k]}</div>`).join('')}</div><p>${esc(r.tip)}</p>`;
+  el.classList.remove('hidden'); clearTimeout(formTimer); formTimer = setTimeout(() => el.classList.add('hidden'), 4500);
+}
+function formSummaryHTML(scores) {
+  if (!scores || !scores.length) return '';
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  return `<div class="card" style="margin-top:16px"><p class="label">Shooting form</p><div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap"><span style="font:800 40px/1 var(--display);color:var(--orange)">${avg.toFixed(1)}<small style="font-size:18px;color:var(--dim)">/10 average</small></span><span style="color:var(--dim)">${scores.length} shot${scores.length > 1 ? 's' : ''} scored · best ${Math.max(...scores)}/10</span></div></div>`;
+}
+
+// ---------- highlight clips ----------
+function clipsHTML() {
+  if (!hl.clips.length) return '';
+  return `<p class="label" style="margin-top:20px">Highlights</p><div class="clips">${hl.clips.map((c, i) => `<div class="clip"><video src="${c.url}" controls playsinline muted preload="metadata"></video><div><b>${esc(c.caption)}</b><a class="btn sm" href="${c.url}" download="whistle-${i + 1}-${esc(c.caption.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}.${c.ext}">Download</a></div></div>`).join('')}</div>`;
+}
+
+// ---------- leaderboards + sync (Game Library accounts) ----------
+const boardsOn = () => !!window.GameSync && !TEST;
+const today = () => new Date().toISOString().slice(0, 10);
+const BOARDS = { dribble30: { id: 'handles30', name: 'Handles 30' }, shoot10: { id: 'tenshots', name: 'Ten Shots' } };
+function openBoard(modeId, score, who) {
+  const b = BOARDS[modeId]; if (!b || !boardsOn()) return;
+  GameSync.board(`${b.id}-${today()}`, `${b.name} · today`, score != null ? { score, info: who || '' } : undefined);
+}
+$('#btnBoards').onclick = () => {
+  if (!boardsOn()) { toast('Leaderboards need the internet'); return; }
+  const w = document.createElement('div'); w.className = 'modal on';
+  w.innerHTML = `<div class="card" style="width:min(380px,100%)"><div class="top" style="margin-bottom:12px"><h2 style="font-size:24px">Leaderboards</h2><button class="btn sm" data-x>Close</button></div>
+    <p style="color:var(--dim);margin-top:0">Today's best scores from everyone playing WHISTLE. Finish a drill, then tap "Post to today's leaderboard".</p>
+    <div style="display:grid;gap:8px">${Object.entries(BOARDS).map(([m, b]) => `<button class="btn" data-b="${m}">${b.name} · today</button>`).join('')}</div></div>`;
+  document.body.appendChild(w);
+  w.addEventListener('click', (e) => { if (e.target === w || e.target.closest('[data-x]')) w.remove(); const b = e.target.closest('[data-b]'); if (b) { w.remove(); openBoard(b.dataset.b); } });
+};
+$('#btnSync').onclick = () => { if (window.GameSync && !TEST) GameSync.open(); else toast('Sync needs the internet'); };
+
+// ---------- coach dashboard ----------
+let dashPid = null, dashRange = 20;
+function renderDash() {
+  renderDashboard($('#dash'), P.players(), dashPid || P.current()?.id, dashRange, (pid, range) => { dashPid = pid; dashRange = range; renderDash(); });
+}
+
+// ---------- HORSE / Knockout ----------
+const TR = cfg.turnRules;
+let turnForm = {};
+function openTurns() { renderTurnsSetup(); $('#mTurns').classList.add('on'); }
+function renderTurnsSetup() {
+  document.querySelectorAll('#tKind button').forEach((b) => b.classList.toggle('on', b.dataset.v === TR.kind));
+  document.querySelectorAll('#tWord button').forEach((b) => b.classList.toggle('on', b.dataset.v === TR.word));
+  document.querySelectorAll('#tN button').forEach((b) => b.classList.toggle('on', +b.dataset.v === TR.n));
+  $('#tWordRow').classList.toggle('hidden', TR.kind !== 'horse');
+  $('#tKindDesc').textContent = TR.kind === 'horse' ? 'Make a shot, everyone copies it. Miss the copy = a letter.' : 'Everyone shoots each round. Miss when someone made it = out.';
+  const players = P.players();
+  cfg.troster = Array.from({ length: TR.n }, (_, i) => cfg.troster[i] ?? null);
+  $('#tRoster').innerHTML = Array.from({ length: TR.n }, (_, i) => `<select data-tslot="${i}"><option value="">Player ${i + 1} (guest, no XP)</option>${players.map((p) => `<option value="${p.id}" ${cfg.troster[i] === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`).join('');
+  document.querySelectorAll('[data-tslot]').forEach((sel) => sel.onchange = () => { cfg.troster[+sel.dataset.tslot] = sel.value || null; P.save(); });
+}
+document.querySelectorAll('#tKind button').forEach((b) => b.onclick = () => { TR.kind = b.dataset.v; P.save(); renderTurnsSetup(); });
+document.querySelectorAll('#tWord button').forEach((b) => b.onclick = () => { TR.word = b.dataset.v; P.save(); renderTurnsSetup(); });
+document.querySelectorAll('#tN button').forEach((b) => b.onclick = () => { TR.n = +b.dataset.v; P.save(); renderTurnsSetup(); });
+$('#mTurnsClose').onclick = () => $('#mTurns').classList.remove('on');
+$('#tGo').onclick = () => {
+  const ids = cfg.troster.slice(0, TR.n).filter(Boolean);
+  if (new Set(ids).size !== ids.length) { toast('The same player is picked twice'); return; }
+  $('#mTurns').classList.remove('on'); enterSession();
+};
+function startTurns() {
+  turns = new Turns({ kind: TR.kind, players: TR.n, word: TR.word }); turnForm = {}; turnsT0 = performance.now();
+  ref.reset();
+  ['#turnBoard', '#turnBanner', '#cAddShot'].forEach((q) => $(q).classList.remove('hidden'));
+  turnUI(true);
+}
+let turnsT0 = 0;
+function turnUI(speak) {
+  const st = turns.state();
+  $('#turnBoard').innerHTML = Array.from({ length: turns.n }, (_, i) => {
+    const mid = turns.kind === 'horse' ? `<span>${[...turns.word].map((ch, k) => (k < turns.letters[i] ? ch : `<i>${ch}</i>`)).join('')}</span>` : `<span style="letter-spacing:.05em;color:${turns.out[i] ? 'var(--red)' : 'var(--green)'}">${turns.out[i] ? 'OUT' : 'IN'}</span>`;
+    return `<div class="tb-p ${st.who === i ? 'cur' : ''} ${turns.out[i] ? 'out' : ''}"><b>${esc(slotName(i))}</b>${mid}</div>`;
+  }).join('');
+  if (st.done) { $('#turnBanner').classList.add('hidden'); return; }
+  const nm = slotName(st.who);
+  const what = st.role === 'set' ? 'Set the shot' : st.role === 'match' ? 'Match it' : `Round ${st.round}`;
+  const sub = st.role === 'set' ? 'Shoot from anywhere. Make it and everyone has to copy it.' : st.role === 'match' ? 'Shoot from the yellow spot.' : 'Everyone shoots from the same spot. Miss when someone made it and you are out.';
+  $('#turnBanner').innerHTML = `${esc(nm)} · ${what}<small>${sub}</small>`;
+  if (speak) call(st.role === 'set' ? 'setshot' : st.role === 'match' ? 'match' : 'setshot', nm, null, 400);
+}
+function feetSpot() {
+  const lm = lastPose; if (!lm || !lm[27] || !lm[28]) return null;
+  return { x: (lm[27].x + lm[28].x) / 2, y: Math.max(lm[27].y, lm[28].y) };
+}
+let turnShotSpot = null;
+function turnEvent(e) {
+  if (e.type === 'shot') {
+    turnShotSpot = feetSpot();
+    if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', slotName(turns.state().who)); }
+    if (cfg.formCoach && !e.manual) pendingForm.push({ who: turns.state().who, t: curT, due: curT + 0.75 });
+  } else if (e.type === 'shotResult') {
+    if (e.made == null) askShot(); else turnShot(e.made);
+  }
+}
+function turnShot(made) {
+  const who = turns.state().who, nm = slotName(who);
+  if (made) { swish(); hl.keep('BUCKET!', nm); } else if (hl.why === 'shot') hl.drop();
+  let speak = true;
+  for (const e of turns.shot(made, turnShotSpot || feetSpot())) {
+    if (e.type === 'set') { showCall('good', 'SHOT SET', `${esc(nm)} made it. Everyone has to match it.`, 1600); call('make'); speak = false; }
+    else if (e.type === 'shotDone' && made && turns.kind !== 'horse') { showCall('good', 'BUCKET', esc(nm), 1100); }
+    else if (e.type === 'letter') { whistle(0.3); showCall('bad', e.letters, `${esc(slotName(e.who))} missed the match`, 1800); call('letter', slotName(e.who), e.letters); speak = false; }
+    else if (e.type === 'out') { setTimeout(() => { showCall('bad', 'OUT', `${esc(slotName(e.who))} is out`, 1600); call('knocked', slotName(e.who)); }, 1900); speak = false; }
+    else if (e.type === 'replay') toast('Nobody made it. Everyone stays in');
+    else if (e.type === 'win') {
+      setTimeout(() => { whistle(0.9, 2); showCall('good', 'WINNER', esc(slotName(e.who)), 2600); call('win', slotName(e.who)); }, 1800);
+      phase = 'done'; endTimer = setTimeout(endSession, 4800);
+    }
+  }
+  turnShotSpot = null;
+  turnUI(speak && !turns.winner);
+}
+function renderTurnsSummary(tn) {
+  const secs = (performance.now() - turnsT0) / 1000, results = [];
+  for (let i = 0; i < tn.n; i++) {
+    const pl = slotPlayer(i); if (!pl) continue;
+    const s = P.newSession('horse');
+    Object.assign(s, { seconds: secs, makes: tn.makes[i], shots: tn.shots[i], won: tn.winner === i, formScores: turnForm[i] || [] });
+    P.addXP(s, 'shots', tn.makes[i] * 10 + tn.shots[i] * 2);
+    P.addXP(s, 'drill', P.XP.game.played + (s.won ? P.XP.game.win : 0));
+    results.push({ i, s, res: P.finish(s, pl.id) });
+  }
+  $('#summary').innerHTML = `
+    <div class="sumhead"><div class="k">${tn.kind === 'horse' ? tn.word : 'Knockout'} · ${tn.n} players · ${fmtTime(secs)}</div>
+      <h2>${tn.winner != null ? esc(slotName(tn.winner)) + ' wins' : 'Game over'}</h2></div>
+    <div class="card scroll-x" style="padding:6px 10px;margin-bottom:16px"><table class="box"><tr><th>Player</th><th>Makes</th><th>Shots</th><th>${tn.kind === 'horse' ? 'Letters' : 'Result'}</th></tr>
+      ${Array.from({ length: tn.n }, (_, i) => `<tr><td>${esc(slotName(i))}${tn.winner === i ? ' <span class="pbflag">WIN</span>' : ''}</td><td>${tn.makes[i]}</td><td>${tn.shots[i]}</td><td>${tn.kind === 'horse' ? (tn.word.slice(0, tn.letters[i]) || '–') : tn.out[i] ? 'Out' : 'Last standing'}</td></tr>`).join('')}</table></div>
+    ${results.length ? `<p class="label">XP</p>${results.map((r, k) => playerCardHTML(r.res, r.res.after.n > r.res.before.n, 'tbar' + k, ` <span style="color:var(--orange)">+${r.s.xp} XP</span>`)).join('')}` : '<p style="color:var(--dim)">Guests don\'t earn XP. Pick saved players to level up.</p>'}
+    ${results.some((r) => r.res.earned.length) ? `<p class="label" style="margin-top:16px">New badges</p><div class="badges">${results.flatMap((r) => r.res.earned.map((b) => badgeHTML({ ...b, desc: `${esc(r.res.player.name)}: ${b.desc}` }, true, true))).join('')}</div>` : ''}
+    ${clipsHTML()}
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn primary" id="again">Play again</button></div>`;
+  $('#again').onclick = () => enterSession();
+  animateBars(results.map((r, k) => [r.res, 'tbar' + k]));
+}
+
 // ---------- boot ----------
 renderHome();
 document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'live' && !videoSrc) $('#cPause').click(); });
@@ -902,5 +1145,22 @@ addEventListener('keydown', (e) => {
   if (!$('#sSession').classList.contains('on')) return;
   if (e.key === ' ' && (phase === 'live' || phase === 'paused')) { e.preventDefault(); $('#cPause').click(); }
 });
+if (window.GameSync && !TEST) {
+  const anyBadge = (g, id) => ((g('whistle.v1') || {}).players || []).some((p) => p.badges && p.badges[id]);
+  GameSync.init({
+    game: 'whistle', keys: [{ match: 'whistle.v1', skip: ['settings', 'current'] }],
+    idle: () => phase === 'off' && $('#sHome').classList.contains('on'),
+    ach: [
+      { id: 'first', name: 'First Bucket', desc: 'Make your first shot', test: (g) => anyBadge(g, 'first') },
+      { id: 'handles', name: 'Handles', desc: '25 dribbles in a row', test: (g) => anyBadge(g, 'handles') },
+      { id: 'sharp', name: 'Sharpshooter', desc: '10 makes in one session', test: (g) => anyBadge(g, 'sharp') },
+      { id: 'form9', name: 'Pure Form', desc: 'Score 9 or 10 from the form coach', test: (g) => anyBadge(g, 'form9') },
+      { id: 'win', name: 'Winner', desc: 'Win a 1v1 or 2v2 game', test: (g) => anyBadge(g, 'win') },
+      { id: 'horse', name: 'Horse Master', desc: 'Win HORSE or Knockout', test: (g) => anyBadge(g, 'horse') },
+      { id: 'k1', name: '1K Club', desc: '1,000 dribbles all-time', test: (g) => anyBadge(g, 'k1') },
+      { id: 'rat', name: 'Gym Rat', desc: 'Finish 10 sessions', test: (g) => anyBadge(g, 'rat') },
+    ],
+  });
+}
 const TSTATS = { frames: 0, pose: 0, ball: 0, ai: 0, ms: 0 }, TLOG = [], TRACE = [];
-if (TEST) window.__wh = { stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };
+if (TEST) window.__wh = { hl, get turns() { return turns; }, turnShot, formResult, renderDash, stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };

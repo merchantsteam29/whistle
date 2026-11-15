@@ -18,6 +18,7 @@ export const MODES = {
   dribble30: { name: 'Handles 30', desc: 'Most dribbles in 30 seconds. No travels or double dribbles.', secs: 30 },
   shoot10: { name: 'Ten Shots', desc: 'Take 10 shots. Mark the hoop and it scores them for you.', shots: 10 },
   game: { name: 'Game', desc: '1v1 or 2v2 on one camera: fouls, 2s and 3s, free throws.', game: true },
+  horse: { name: 'HORSE & Knockout', desc: '2 to 4 kids take turns shooting. Collect letters or get knocked out.', turns: true },
 };
 
 // badges: test(session, lifetimeStats) -> true when earned
@@ -39,12 +40,17 @@ export const BADGES = [
   { id: 'win', name: 'Winner', desc: 'Win a game', icon: 'trophy', test: (s) => s.mode === 'game' && s.won },
   { id: 'splash', name: 'Splash', desc: 'Hit a three in a game', icon: 'three', test: (s) => s.mode === 'game' && s.threes >= 1 },
   { id: 'cleangame', name: 'Lockdown', desc: 'Win a game without a foul', icon: 'shield', test: (s) => s.mode === 'game' && s.won && s.fouls === 0 },
+  { id: 'form9', name: 'Pure Form', desc: 'Score 9 or 10 on a shot from the form coach', icon: 'star', test: (s) => (s.formScores || []).some((f) => f >= 9) },
+  { id: 'horse', name: 'Horse Master', desc: 'Win a game of HORSE or Knockout', icon: 'trophy', test: (s) => s.mode === 'horse' && s.won },
   { id: 'rat', name: 'Gym Rat', desc: 'Finish 10 sessions', icon: 'cal', test: (s, L) => L.sessions >= 10 },
   { id: 'iron', name: 'Iron Player', desc: '60 minutes of practice all-time', icon: 'clock', test: (s, L) => L.seconds >= 3600 },
 ];
 
 const blankStats = () => ({ sessions: 0, seconds: 0, dribbles: 0, bestStreak: 0, makes: 0, shots: 0, travels: 0, doubles: 0, clean: 0, games: 0, wins: 0, points: 0, fouls: 0 });
-const DEFAULT_SETTINGS = { aiBall: false, trackView: false, threeLine: null, gameRules: { format: '1v1', toPoints: 11, foulOut: 5, bonusAt: 5 }, roster: [], stepsAllowed: 2, whistle: true, voice: true, volume: 0.8, skeleton: true, sensitivity: 1, quality: 'fast', facing: 'user', mirror: true, ballColor: null, hoop: null };
+const DEFAULT_SETTINGS = { voicePack: 'coach', formCoach: true, carry: true, bounds: null, lane: null,
+  teams: [{ name: 'Home', color: '#ff7a1a' }, { name: 'Away', color: '#3d9bff' }],
+  turnRules: { kind: 'horse', word: 'HORSE', n: 2 }, troster: [],
+  aiBall: false, trackView: false, threeLine: null, gameRules: { format: '1v1', toPoints: 11, foulOut: 5, bonusAt: 5, shotClock: 0 }, roster: [], stepsAllowed: 2, whistle: true, voice: true, volume: 0.8, skeleton: true, sensitivity: 1, quality: 'fast', facing: 'user', mirror: true, ballColor: null, hoop: null };
 const COLORS = ['#ff7a1a', '#2f8cff', '#19c37d', '#e5484d', '#a259ff', '#ffc53d', '#14b8c4', '#f472b6'];
 
 let data = null;
@@ -53,6 +59,8 @@ export function load() {
   if (data) return data;
   try { data = JSON.parse(localStorage.getItem(KEY)) || blank(); } catch { data = blank(); }
   data.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+  data.settings.gameRules = { ...DEFAULT_SETTINGS.gameRules, ...data.settings.gameRules };
+  if (!Array.isArray(data.settings.teams) || data.settings.teams.length < 2) data.settings.teams = DEFAULT_SETTINGS.teams.map((t) => ({ ...t }));
   data.players ||= [];
   for (const p of data.players) { p.stats = { ...blankStats(), ...(p.stats || {}) }; p.badges ||= {}; p.bests ||= {}; p.history ||= []; }
   return data;
@@ -83,7 +91,7 @@ export function levelOf(xp) {
 // a running session: main.js feeds it ref events and it adds up stats + XP
 export function newSession(mode) {
   return { mode, start: Date.now(), seconds: 0, dribbles: 0, bestStreak: 0, makes: 0, shots: 0, makeRun: 0, bestMakeRun: 0, travels: 0, doubles: 0, clean: 0,
-    xp: 0, xpBy: { dribbles: 0, streaks: 0, shots: 0, footwork: 0, drill: 0 } };
+    xp: 0, xpBy: { dribbles: 0, streaks: 0, shots: 0, footwork: 0, drill: 0 }, formScores: [] };
 }
 export function addXP(s, kind, n) { s.xp += n; s.xpBy[kind] = (s.xpBy[kind] || 0) + n; return n; }
 
@@ -106,8 +114,8 @@ export function finish(s, pid) {
   p.xp += s.xp;
   const earned = [];
   for (const b of BADGES) if (!p.badges[b.id] && b.test(s, L)) { p.badges[b.id] = Date.now(); earned.push(b); }
-  p.history.unshift({ at: s.start, mode: s.mode, seconds: Math.round(s.seconds), dribbles: s.dribbles, bestStreak: s.bestStreak, makes: s.makes, shots: s.shots, travels: s.travels, doubles: s.doubles, xp: s.xp, ...(s.mode === 'game' ? { score: s.score, won: s.won, points: s.points, fouls: s.fouls } : {}) });
-  p.history.length = Math.min(p.history.length, 40);
+  p.history.unshift({ at: s.start, mode: s.mode, seconds: Math.round(s.seconds), dribbles: s.dribbles, bestStreak: s.bestStreak, makes: s.makes, shots: s.shots, travels: s.travels, doubles: s.doubles, xp: s.xp, formAvg: s.formScores?.length ? +(s.formScores.reduce((a, b) => a + b, 0) / s.formScores.length).toFixed(1) : null, ...(s.mode === 'game' ? { score: s.score, won: s.won, points: s.points, fouls: s.fouls } : {}) });
+  p.history.length = Math.min(p.history.length, 60);
   save();
   return { player: p, before, after: levelOf(p.xp), earned, drill };
 }

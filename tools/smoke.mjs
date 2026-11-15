@@ -78,6 +78,10 @@ check(await ev(`return !document.getElementById('cWave').classList.contains('hid
 await ev(`document.getElementById('cWave').click();`);
 check(await ev(`return __wh.session.travels`) === 0, 'waving off removes the travel');
 await ev(`__wh.onEvent({ type: 'shot' }); __wh.onEvent({ type: 'shotResult', made: true, auto: true }); __wh.onEvent({ type: 'shot' }); __wh.onEvent({ type: 'shotResult', made: true, auto: true });`);
+await ev(`__wh.formResult(0, { score: 8, parts: { legs: 1, elbow: 0.7, release: 1, follow: 0.5 }, tip: 'Hold your follow-through.' });`);
+await sleep(2300);
+check(await ev(`return !document.getElementById('formCard').classList.contains('hidden') && __wh.session.formScores.length === 1`), 'form coach card shows a score');
+check(await ev(`return __wh.hl.clips.length`) >= 1, `a made shot is saved as a highlight clip (${await ev(`return __wh.hl.clips.length + ' clip(s), recorder ' + __wh.hl.enabled`)})`);
 await sleep(300); await shot('08-bucket');
 check(await ev(`return __wh.session.makes`) === 2, '2 makes counted');
 await ev(`document.getElementById('cFix').click();`);
@@ -132,6 +136,33 @@ check(await ev(`return document.getElementById('sSummary').classList.contains('o
 await shot('18-game-summary');
 const gp = await ev(`return __wh.P.current().stats`);
 check(gp.games === 1 && gp.wins === 1 && gp.points === 7, `game saved to the player (games ${gp.games}, wins ${gp.wins}, points ${gp.points})`);
+// HORSE: 2 players, Jordan sets and makes, the guest misses 5 matches
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=horse]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+check(await ev(`return document.getElementById('mTurns').classList.contains('on')`), 'HORSE setup opens');
+await ev(`const sel = document.querySelector('[data-tslot="0"]'); sel.value = sel.options[1].value; sel.dispatchEvent(new Event('change')); document.getElementById('tGo').click();`);
+for (let i = 0; i < 40; i++) { await sleep(500); if (await ev(`return document.getElementById('loading').classList.contains('hidden')`)) break; }
+await ev(`document.getElementById('btnGo').click();`); await sleep(3200);
+check(await ev(`return !!__wh.turns && !document.getElementById('turnBoard').classList.contains('hidden')`), 'HORSE board shows');
+await ev(`__wh.turnShot(true); __wh.turnShot(false);`); await sleep(400); await shot('19-horse');
+check(await ev(`return __wh.turns.letters[1]`) === 1, 'missed match = a letter');
+await ev(`for (let k = 0; k < 4; k++) { __wh.turnShot(true); __wh.turnShot(false); }`);
+await sleep(5600);
+check(await ev(`return document.getElementById('sSummary').classList.contains('on') && document.getElementById('summary').textContent.includes('wins')`), 'HORSE ends with a winner');
+await shot('20-horse-summary');
+// coach dashboard
+await ev(`__wh.go('sDash');`); await sleep(400);
+check(await ev(`return document.querySelectorAll('#dash .chart').length`) >= 3, `dashboard draws charts (${await ev(`return document.querySelectorAll('#dash .chart').length`)})`);
+await shot('21-dashboard');
+await ev(`document.getElementById('dashTable').click();`); check(await ev(`return !document.getElementById('dashTbl').classList.contains('hidden')`), 'dashboard table view');
+// settings: voice packs + team colours
+await ev(`__wh.go('sSettings');`); await sleep(200);
+check(await ev(`return document.getElementById('setPack').options.length`) === 3, 'three voice packs');
+await shot('22-settings');
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=game]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+await ev(`document.querySelector('[data-tcol="1"][data-c="#e5484d"]').click();`);
+check(await ev(`return __wh.P.settings().teams[1].color`) === '#e5484d', 'team colour picked');
+await shot('23-team-colours');
+await ev(`document.getElementById('mGameClose').click();`);
 
 console.log('\nERRORS (' + errs.length + ')'); for (const e of errs) console.log('  ' + e);
 ws.close(); ch.kill(); await sleep(500); try { fs.rmSync(prof, { recursive: true, force: true }); } catch {}
