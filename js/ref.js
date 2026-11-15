@@ -73,8 +73,9 @@ export class Ref {
     let B = null;
     if (ball) {
       B = { X: ball.x * aspect, Y: ball.y, R: ball.r };
-      if (this.ball && t - this.ball.t < 0.3) {
-        const bdt = Math.max(0.001, t - this.ball.t), a = 0.6;
+      // a short gap (blur near the floor, behind a leg) keeps the bounce tracking going
+      if (this.ball && t - this.ball.t < 0.45) {
+        const bdt = Math.max(0.001, t - this.ball.t), a = t - this.ball.t > 0.1 ? 1 : 0.6;
         this.vx = this.vx * (1 - a) + ((B.X - this.ball.X) / bdt) * a;
         this.vy = this.vy * (1 - a) + ((B.Y - this.ball.Y) / bdt) * a;
       } else { this.vx = 0; this.vy = 0; this.desc = false; }
@@ -250,6 +251,9 @@ export class Ref {
   freeBall(B, body, t, dt) {
     const S = this.S;
     // shot: soon after leaving the hands the ball is above the shoulders and has risen well above where the hands had it
+    // ...or it went out of the top of the picture: last held above the shoulders, now seen way above the head
+    const handGap = Math.min(...body.hands.map((h) => (h ? Math.hypot(h.X - B.X, h.Y - B.Y) : 9)));
+    if (!this.shot && t - this.lastHandT < 2.0 && this.handBallY < body.shY && B.Y < body.shY - 1.3 * S && handGap > 1.0 * S) { this.startShot(B, t); return; }
     if (!this.shot && t - this.releaseT < 0.8 && B.Y < body.shY - 0.2 * S && (B.Y < this.handBallY - 0.15 * S || this.vy < -1.5 * S) && this.vy < 0.5 * S) { this.startShot(B, t); return; }
     if (this.vy > 1.2 * S && !this.desc) { this.desc = true; this.descMaxY = B.Y; this.descN = 0; }
     if (this.desc) {
@@ -279,7 +283,9 @@ export class Ref {
   // when the ball is hidden or blurred). One dribble seen both ways within 0.3 s counts once.
   bounce(t, src = 'ball') {
     const L = this.lastDr;
-    if (L && t - L.t < 0.3 && L.src !== src && !L.merged) { L.merged = true; return; }
+    // the same bounce seen the other way (hand vs ball): within 70% of this player's dribble pace
+    const win = Math.min(0.4, 0.7 * (this.drPeriod || 0.5));
+    if (L && t - L.t < win && L.src !== src && !L.merged) { L.merged = true; return; }
     if (L && t - L.t < 0.18) return;
     if (this.pickedUp) {
       // only a bounce actually seen can call a double dribble (fewer wrong calls)
@@ -289,6 +295,7 @@ export class Ref {
     }
     this.bounceSinceRelease = true; this.saved = null;
     if (this.cleanPending) { this.cleanPending = false; this.ev.push({ type: 'clean', how: 'dribble' }); }
+    if (L && t - L.t < 1.2) this.drPeriod = (this.drPeriod || 0.5) * 0.6 + (t - L.t) * 0.4;
     this.hasDribbled = true; this.dribbling = true; this.lastBounceT = t; this.lastDr = { t, src };
     this.streak++; this.totalDribbles++;
     this.ev.push({ type: 'dribble', streak: this.streak, total: this.totalDribbles, src });
@@ -357,7 +364,10 @@ export class Ref {
 
   trackShot(B, hoop, aspect) {
     const s = this.shot; if (!s) return;
-    const t = this.t, age = t - s.t0;
+    const t = this.t;
+    // still high in the hands (the set-up before the release): the shot hasn't left yet
+    if (this.near && B && this.body && B.Y < this.body.shY) s.t0 = t;
+    const age = t - s.t0;
     const end = (made) => { this.shot = null; this.ev.push({ type: 'shotResult', made, auto: !!hoop }); };
     if (hoop) {
       const rimY = (hoop.y1 + hoop.y2) / 2;
@@ -370,7 +380,7 @@ export class Ref {
           if (B.Y > rimY + w) return end(false);
         }
       }
-      if (age > 3.5 || (age > 0.8 && this.near)) end(false);
+      if (age > 3.5 || (age > 1.2 && this.near)) end(false);
     } else if (age > 3 || (age > 1.2 && B && B.Y > s.y0) || (age > 0.8 && this.near)) end(null);
   }
 }

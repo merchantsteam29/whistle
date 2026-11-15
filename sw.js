@@ -1,7 +1,7 @@
 // Service worker: makes the game installable as an app and playable offline.
 // Network first, so a new version on the site always wins; the last copy of every file
 // (the game, libraries from the CDN, fonts) is kept for when there is no connection.
-const CACHE = 'whistle-v2';
+const CACHE = 'whistle-v3';
 const CACHED_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'storage.googleapis.com'];
 
 self.addEventListener('install', (e) => {

@@ -38,6 +38,6 @@ node serve.js        # http://localhost:8090  (the camera needs localhost or htt
 ```
 node tools/test-ref.mjs        # 18 scripted plays through the ref engine (travel, pivot, double dribble, hidden ball, make/miss, jitter)
 node tools/test-game.mjs       # 14 game-mode checks (fouls, same-depth rule, 2s/3s, free throws, bonus, foul-out, identity)
-node tools/clip.mjs <id>       # a real video (tools/clips/<id>.mp4) through the whole app, with what it called
+node tools/clip.mjs <id> [rate] [--hoop=x1,y1,x2,y2] [--slow=4] [--trace --span=a,b]   # a real video through the whole app: calls, plus a per-frame trace
 node serve.js & node tools/smoke.mjs [--mobile]   # headless Chrome with a fake camera, screenshots in tools/shots/
 ```

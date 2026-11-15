@@ -9,7 +9,7 @@ const [clip = '2272', rate = '0.5'] = process.argv.slice(2).filter((a) => !a.sta
 const flag = (k) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1];
 const shotsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'shots', 'clip-' + clip);
 const b = await launch({ width: 1280, height: 720, args: ['--enable-gpu-rasterization', '--ignore-gpu-blocklist'] });
-await b.nav(`http://localhost:8090/?test&debug&src=tools/clips/${clip}.mp4&rate=${rate}`);
+await b.nav(`http://localhost:8090/?test&debug&trace&src=tools/clips/${clip}.mp4&rate=${rate}${flag("slow") ? "&slow=" + flag("slow") : ""}`);
 await sleep(1500);
 const hoop = flag('hoop');
 await b.ev(`
@@ -39,5 +39,10 @@ console.log('timeline:', res.log.filter((e) => !['dribble', 'release'].includes(
 const dr = res.log.filter((e) => e.type === 'dribble').map((e) => e.t);
 console.log('dribbles at:', dr.join(' '));
 if (res.extra) console.log('extra:', JSON.stringify(res.extra));
+if (process.argv.includes('--trace')) {
+  const tr = (await b.ev(`return __wh.trace.join('##')`)).split('##');
+  const [a, z] = (flag('span') || '0,999').split(',').map(Number);
+  console.log(tr.filter((l) => +l.split(' ')[0] >= a && +l.split(' ')[0] <= z).join('\n'));
+}
 if (b.errs.length) console.log('ERRORS:', b.errs.join('\n'));
 await b.close();

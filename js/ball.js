@@ -8,7 +8,9 @@
 // ball was heading. Blobs that sit still for seconds with no hand near (a rock, a painted line, a
 // shoe) are remembered as background and ignored.
 
-export const DEFAULT_COLOR = { h: 20, s: 0.7, v: 0.6 }; // a normal orange basketball
+// a basketball before it has been learned: anything from red-brown to orange, so faded,
+// brown and reddish balls are found too (body masks + size checks keep it from grabbing skin)
+export const DEFAULT_COLOR = { h: 16, s: 0.55, v: 0.5, wide: true };
 
 export class BallTracker {
   constructor() {
@@ -57,7 +59,17 @@ export class BallTracker {
     return { h: (h0 + med(rel) + 360) % 360, s: med(ss), v: med(vs), n: hs.length };
   }
 
-  setColor(c) { if (c) this.color = { h: c.h, s: c.s, v: c.v }; }
+  // learn the ball's colour from a player holding it: sample between the hands, and accept it only
+  // if that colour makes one round, ball-sized blob right there. Returns the colour or null.
+  learnFrom(mid, S, aspect) {
+    const c = this.sample(mid.x, mid.y, S * 0.2);
+    if (!c || c.s < 0.25) return null;
+    const keep = this.color; this.color = { h: c.h, s: c.s, v: c.v };
+    const hit = this.candidates([]).find((b) => Math.hypot((b.x - mid.x) * aspect, b.y - mid.y) < S * 0.4 && b.r / S > 0.12 && b.r / S < 0.5);
+    this.color = keep;
+    return hit ? c : null;
+  }
+  setColor(c) { if (c) this.color = { h: c.h, s: c.s, v: c.v, wide: !!c.wide }; }
 
   // all round blobs of the ball colour: [{x, y, r, score}] best first. excludes: [{x,y,r}] (faces)
   // excludes: circles {x, y, r} and capsules {x, y, x2, y2, r} (normalised, r in height units) that
@@ -81,7 +93,7 @@ export class BallTracker {
     if (!px) return [];
     const c = this.color, tol = this.tol;
     if (c.s < 0.25) return []; // a white / grey ball: colour can't find it, motion does
-    const hTol = 12 * tol, sMin = Math.max(0.3, c.s * (1 - 0.35 * tol)), vMin = c.v * (1 - 0.6 * tol);
+    const hTol = (c.wide ? 22 : 12) * tol, sMin = c.wide ? 0.28 / tol : Math.max(0.25, c.s * (1 - 0.35 * tol)), vMin = c.v * (1 - 0.6 * tol);
     const ex = this.prepEx(excludes);
     for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
       let on = 0;
@@ -175,6 +187,7 @@ export class BallFinder {
     }
 
     const near = (b) => this.plausible(b, people, track, t, S, aspect);
+    this.dbg = pool.slice(0, 4).map((c) => `${c.motion ? 'm' : 'c'}${c.x.toFixed(2)},${c.y.toFixed(2)} r${c.r.toFixed(3)} p${near(c).toFixed(2)}${!c.motion && this.isBackground(c, people, t) ? ' BG' : ''}`).join(' ');
     let best = null;
     if (dets && dets.length) {
       let bs = 0;
@@ -211,6 +224,18 @@ export class BallFinder {
   // 0 = not believable, up to ~2 = right where expected
   plausible(b, people, track, t, S, aspect) {
     let p = 0;
+    // size: same ball as before (not 2x bigger / smaller), and right for the players' size.
+    // A ball up high may be in flight toward the hoop, further from the camera, so it can look much smaller.
+    const top = people.length ? Math.min(...people.map((q) => q.box.y0 + 0.5 * q.S)) : 0;
+    const high = b.y < top;
+    // around the marked hoop: a shot coming down, small and far away, is still the ball
+    const h = this.hoop;
+    if (h) {
+      const w = Math.max(0.01, Math.abs(h.x2 - h.x1)), ry = (h.y1 + h.y2) / 2;
+      if (b.x > Math.min(h.x1, h.x2) - 1.5 * w && b.x < Math.max(h.x1, h.x2) + 1.5 * w && b.y > ry - 4 * w && b.y < ry + 3 * w && b.r < w * 1.2 && b.r > w * 0.15) return track ? 1.6 : 1.0;
+    }
+    if (track && (b.r > track.r * 2.2 || b.r < track.r / (high ? 3.5 : 2.2))) return 0;
+    if (people.length && (b.r / S < (high ? 0.04 : 0.09) || b.r / S > 0.6)) return 0;
     if (track) {
       const dt = t - track.t, px = track.x + track.vx * dt, py = track.y + track.vy * dt;
       const gate = 1.0 * S + Math.hypot(track.vx * aspect, track.vy) * dt * 0.6 + track.r * 2;
@@ -219,11 +244,11 @@ export class BallFinder {
     }
     for (const q of people) {
       const bx = q.box, m = q.S;
-      if (b.x < bx.x0 - 1.4 * m / aspect || b.x > bx.x1 + 1.4 * m / aspect || b.y < bx.y0 - 2.5 * m || b.y > bx.y1 + 0.35 * m) continue;
+      if (b.x < bx.x0 - 1.0 * m / aspect || b.x > bx.x1 + 1.0 * m / aspect || b.y < bx.y0 - 2.5 * m || b.y > bx.y1 + 0.35 * m) continue;
       // size check: a basketball is ~0.2-0.7 torso lengths across (looser for other balls)
       // size: a basketball is ~a quarter of a torso across (radius ~0.27 torso); mini balls smaller
-      const rr = b.r / m; if (rr < 0.09 || rr > 0.6) continue;
-      let s = 0.8 * Math.exp(-(Math.log(rr / 0.27) ** 2) / (2 * 0.45 * 0.45));
+      const rr = b.r / m; if (rr < (high ? 0.04 : 0.09) || rr > 0.6) continue;
+      let s = 0.8 * (high ? 0.8 : Math.exp(-(Math.log(rr / 0.27) ** 2) / (2 * 0.45 * 0.45)));
       for (const h of q.hands) if (h && Math.hypot((b.x - h.x) * aspect, b.y - h.y) < 0.9 * m + b.r) s = 1.4;
       p = Math.max(p, s);
     }

@@ -220,7 +220,7 @@ async function enterSession() {
   go('sSession');
   phase = 'setup'; tapMode = 'ball'; hoopPts = []; session = null; game = null; lastCall = null; lastShot = null;
   court = new Court(isGame() ? slotCount() : 1);
-  ref.reset(); finder.reset();
+  ref.reset(); finder.reset(); learn.done = false; learn.hits.length = 0; applySettings();
   ['#scoreboard', '#gameboard', '#poss', '#cPause', '#cWave', '#cFix', '#cAddShot', '#cRef', '#refPad', '#cEnd', '#ask', '#count'].forEach((s) => $(s).classList.add('hidden'));
   $('#setup').classList.remove('hidden'); $('#cBack').classList.remove('hidden'); $('#cFlip').classList.remove('hidden');
   $('#chkThree').classList.toggle('hidden', !isGame());
@@ -276,7 +276,7 @@ function startLoop() {
 function process(now) {
   if (!pose || video.readyState < 2 || !video.videoWidth) return;
   const t0 = performance.now();
-  const t = videoSrc ? video.currentTime : now / 1000;
+  const t = videoSrc ? video.currentTime / (Number(Q.get("slow")) || 1) : now / 1000; // ?slow=4 for slow-motion clips
   const aspect = video.videoWidth / video.videoHeight;
   let all = [];
   try { all = pose.detectAll(video, now); } catch (e) { all = []; }
@@ -284,6 +284,8 @@ function process(now) {
   slotPoses = court.assign(all.map((lm) => ({ lm, shirt: shirtOf(lm) })), t, aspect, stage.classList.contains('mirror'));
   lastPose = slotPoses[0] || null;
   const people = slotPoses.filter(Boolean).map((lm) => personOf(lm, aspect));
+  autoLearn(people[0], aspect);
+  finder.hoop = cfg.hoop;
   lastBall = finder.find(t, video, now, people, aspect);
   // speed: frames per second, and drop to Fast tracking if Accurate can't keep up
   fpsM.n++; if (now - fpsM.t0 > 1000) { fpsM.fps = Math.round((fpsM.n * 1000) / (now - fpsM.t0)); fpsM.n = 0; fpsM.t0 = now; checkSpeed(now); }
@@ -292,6 +294,7 @@ function process(now) {
     if (game) handleGame(game.update({ t, aspect, poses: slotPoses, ball: lastBall, hoop: cfg.hoop, threeLine: cfg.threeLine }));
     else {
       for (const e of ref.update({ t, aspect, pose: lastPose, ball: lastBall, hoop: cfg.hoop })) onEvent(e);
+      if (TEST && Q.has('trace')) { const b = ref.body, f = (v) => v == null ? '-' : v.toFixed(2); TRACE.push(`${f(t)} ball ${lastBall ? f(lastBall.x) + ',' + f(lastBall.y) + ' r' + lastBall.r.toFixed(3) + ' ' + lastBall.src : '-'} hands ${b ? b.hands.map((h) => h ? f(h.X / aspect) + ',' + f(h.Y) : 'x').join(' ') : 'nobody'} S ${f(ref.S)} near ${ref.near} held ${ref.held} | ${finder.dbg}`); }
       const m = P.MODES[session.mode];
       if (m.secs && session.seconds >= m.secs && !endTimer) { session.seconds = m.secs; session.complete = true; whistle(0.7, 2); say('Time!'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
     }
@@ -314,6 +317,25 @@ async function checkSpeed(now) {
   } else fpsM.slowSince = 0;
 }
 
+// learn the ball's colour on its own when someone holds it in both hands (unless it was tapped)
+const learn = { hits: [], done: false };
+function autoLearn(p, aspect) {
+  if (cfg.ballColor || learn.done || !p) return;
+  const [a, b] = p.hands;
+  if (!a || !b || Math.hypot((a.x - b.x) * aspect, a.y - b.y) > p.S * 0.95) { learn.hits.length = 0; return; }
+  const c = tracker.learnFrom({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, p.S, aspect);
+  if (!c) { learn.hits.length = 0; return; }
+  learn.hits.push(c);
+  if (learn.hits.length < 6) return;
+  const h0 = learn.hits[0].h, close = learn.hits.every((x) => Math.abs(((x.h - h0 + 540) % 360) - 180) < 14);
+  if (!close) { learn.hits.shift(); return; }
+  const med = (k) => learn.hits.map((x) => x[k]).sort((m, n) => m - n)[3];
+  tracker.setColor({ h: h0, s: med('s'), v: med('v') }); finder.autoColor = false;
+  learn.done = true; learn.hits.length = 0;
+  if (phase === 'setup') beep(1200, 0.08);
+  toast('Got the ball. Colour learned', true);
+}
+
 // the colour of a player's shirt (helps tell players apart when they cross)
 function shirtOf(lm) {
   if (!lm[11] || !lm[23]) return null;
@@ -327,7 +349,7 @@ function personOf(lm, aspect) {
   const sx = (lm[11].x + lm[12].x) / 2, sy = (lm[11].y + lm[12].y) / 2, hx = (lm[23].x + lm[24].x) / 2, hy = (lm[23].y + lm[24].y) / 2;
   const S = Math.max(0.03, Math.hypot((sx - hx) * aspect, sy - hy));
   const hand = (w, i) => (lm[w] && (lm[w].visibility ?? 1) > 0.3 ? { x: lm[w].x + (lm[i].x - lm[w].x) * 0.6, y: lm[w].y + (lm[i].y - lm[w].y) * 0.6 } : null);
-  const face = lm[0] && (lm[0].visibility ?? 1) > 0.5 ? { x: lm[0].x, y: lm[0].y, r: Math.max(0.03, S * 0.42) } : null;
+  const face = lm[0] && (lm[0].visibility ?? 1) > 0.5 ? { x: lm[0].x, y: lm[0].y, r: Math.max(0.02, S * 0.22) } : null; // the head only: a ball held up to shoot sits right next to it
   // body parts the ball tracker ignores (skin / clothes can be ball-coloured): legs, feet, upper arms, face
   const ok = (i) => lm[i] && (lm[i].visibility ?? 1) > 0.4;
   const cap = (a, b, r) => (ok(a) && ok(b) ? { x: lm[a].x, y: lm[a].y, x2: lm[b].x, y2: lm[b].y, r: r * S } : null);
@@ -407,10 +429,10 @@ function updateSetup() {
     : (bodyOk ? 'Got you. Head to feet in view.' : (lastPose ? 'Almost. Step back until your feet are in the picture.' : 'Stand 3 to 5 m from the camera, head to feet in the picture.'));
   setChk('#chkBody', bodyOk, !bodyOk, bodyTxt);
   const ai = finder.det && cfg.aiBall;
-  const ballSet = !!cfg.ballColor || ballDefaultChosen || ai;
+  const ballSet = !!cfg.ballColor || learn.done || ballDefaultChosen || ai;
   const seen = lastBall ? ` · <b style="color:var(--green);display:inline">ball seen${lastBall.src === 'ai' ? ' (AI)' : ''}</b>` : ' · <span style="color:var(--faint)">ball not seen</span>';
-  const how = cfg.ballColor ? 'Colour learned from your tap.' : ai ? 'The AI finds any ball. Tapping it helps colour tracking.' : 'Standard orange.';
-  setChk('#chkBall', ballSet, tapMode === 'ball' && !ballSet, ballSet ? `<span class="swatch" style="background:${hsvCss(tracker.color)}"></span>${how}${seen}` : 'Hold the ball up and tap it on screen so WHISTLE learns its colour.' + seen);
+  const how = cfg.ballColor ? 'Colour learned from your tap.' : learn.done ? 'Colour learned automatically.' : ai ? 'The AI finds any ball. Tapping it helps colour tracking.' : 'Standard orange.';
+  setChk('#chkBall', ballSet, tapMode === 'ball' && !ballSet, ballSet ? `<span class="swatch" style="background:${hsvCss(tracker.color)}"></span>${how}${seen}` : 'Hold the ball up in both hands for a second (or tap it) so WHISTLE learns your ball.' + seen);
   const hoopTxt = tapMode === 'hoop' ? (hoopPts.length ? 'Now tap the RIGHT edge of the rim.' : 'Tap the LEFT edge of the rim.') : cfg.hoop ? 'Hoop marked. Shots get scored automatically.' : 'For auto-scored shots: tap the left edge of the rim, then the right. Skip it and you mark shots yourself.';
   setChk('#chkHoop', !!cfg.hoop && tapMode !== 'hoop', tapMode === 'hoop', hoopTxt);
   $('#hoopMark').textContent = cfg.hoop ? 'Redo hoop' : 'Mark hoop';
@@ -880,5 +902,5 @@ addEventListener('keydown', (e) => {
   if (!$('#sSession').classList.contains('on')) return;
   if (e.key === ' ' && (phase === 'live' || phase === 'paused')) { e.preventDefault(); $('#cPause').click(); }
 });
-const TSTATS = { frames: 0, pose: 0, ball: 0, ai: 0, ms: 0 }, TLOG = [];
-if (TEST) window.__wh = { stats: TSTATS, log: TLOG, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };
+const TSTATS = { frames: 0, pose: 0, ball: 0, ai: 0, ms: 0 }, TLOG = [], TRACE = [];
+if (TEST) window.__wh = { stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };
