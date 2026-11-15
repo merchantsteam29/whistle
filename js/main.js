@@ -3,7 +3,13 @@ import { Ref } from './ref.js';
 import { BallTracker, BallFinder, DEFAULT_COLOR } from './ball.js';
 import { createPose, createBallDetector, BONES } from './pose.js';
 import { Game, Court } from './game.js';
-import { sound, unlock, whistle, say, beep, swish } from './audio.js';
+import { sound, unlock, whistle, say, beep, swish, crowdOn, crowdOff, cheer, groan, buzzer } from './audio.js';
+import { newDrillState, onDribble, SlideCounter, dailyChallenge, dailyStreak, todayStr, PRO, PLANS, REST_SECS } from './drills.js';
+import { THEMES, WHISTLES, CELEBRATIONS, applyTheme, allowed, celebrate } from './styles.js';
+import { Replay } from './replay.js';
+import { saveCourt, shotChartHTML } from './shotchart.js';
+import { buildReport, reportHTML, encodeReport, decodeReport } from './report.js';
+import { BoardHost, joinBoard } from './board.js';
 import * as P from './progress.js';
 import { analyzeShot, FORM_NAMES } from './form.js';
 import { Turns } from './turns.js';
@@ -55,6 +61,7 @@ function go(id) {
   if (id === 'sProfile') renderProfile();
   if (id === 'sSettings') renderSettings();
   if (id === 'sDash') renderDash();
+  if (id === 'sReport' && !sharedReport) { $('#repBar').classList.remove('hidden'); renderReport(); }
   if (id !== 'sSession') { stopCamera(); dropVideo(); }
 }
 document.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
@@ -76,17 +83,29 @@ function renderHome() {
       <div class="pc-actions"><button class="btn sm" id="pcSwitch">Switch player</button><span style="flex:1"></span><span style="color:var(--dim);font-size:13px;align-self:center">${Object.keys(p.badges).length}/${P.BADGES.length} badges</span></div>`;
     $('#pcSwitch').onclick = openPlayers;
   }
-  $('#modes').innerHTML = Object.entries(P.MODES).map(([id, m]) => {
+  const card1 = (id, m, small) => {
     const pb = p?.bests?.[id];
     const right = m.game && p ? `<div class="pb">RECORD<em>${p.stats.wins}-${p.stats.games - p.stats.wins}</em></div>` : pb != null ? `<div class="pb">BEST<em>${pb}</em></div>` : '';
-    return `<button class="mode ${id === mode ? 'sel' : ''}" data-mode="${id}"><div class="ic">${svg(id)}</div><div><b>${m.name}</b><span>${m.desc}</span></div>${right}</button>`;
-  }).join('');
+    return `<button class="mode ${id === mode ? 'sel' : ''}" data-mode="${id}"><div class="ic">${svg(IC[id] ? id : { horse: 'target', plan: 'cal', team: 'game' }[id] || (m.drill ? 'dribble30' : 'free'))}</div><div><b>${m.name}</b>${small ? '' : `<span>${m.desc}</span>`}</div>${right}</button>`;
+  };
+  const E = Object.entries(P.MODES);
+  $('#modes').innerHTML = `<p class="mgroup">Play</p>${E.filter(([id, m]) => id === 'free' || m.game || m.turns).map(([id, m]) => card1(id, m)).join('')}
+    <p class="mgroup">Drills</p><div class="drillgrid">${E.filter(([, m]) => m.drill).map(([id, m]) => card1(id, m, true)).join('')}</div>
+    <p class="mgroup">Coach</p>${E.filter(([, m]) => m.plan || m.team).map(([id, m]) => card1(id, m)).join('')}`;
+  const sel = P.MODES[mode];
+  if (sel?.drill) $('#modes').insertAdjacentHTML('beforeend', `<p style="color:var(--dim);font-size:13px;margin:4px 2px 0">${esc(sel.desc)}${PRO[mode] ? ` · Pro: ${PRO[mode]}` : ''}</p>`);
+  const ch = dailyChallenge(), done = p?.daily?.last === todayStr(), st = p ? dailyStreak(p) : 0;
+  $('#daily').innerHTML = `<div class="daily ${done ? 'done' : ''}"><div class="fl">${done ? '✅' : '🔥'}</div><div style="flex:1"><b>Today's challenge</b><span>${esc(ch.text)}${st ? ` · ${st}-day streak` : ''}${done ? ' · done!' : ' · +50 XP'}</span></div>${done ? '' : `<button class="btn sm primary" id="dailyGo">Go</button>`}</div>`;
+  const dg = $('#dailyGo'); if (dg) dg.onclick = () => { mode = ch.mode; renderHome(); $('#btnStart').click(); };
+  if (p) { applyTheme(allowed(THEMES, p.style?.theme, P.levelOf(p.xp).n)); } else applyTheme('classic');
   document.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { mode = b.dataset.mode; renderHome(); });
 }
 $('#btnStart').onclick = () => {
   unlock();
   if (mode === 'game') { openGameSetup(); return; }
   if (mode === 'horse') { openTurns(); return; }
+  if (mode === 'plan') { if (!P.current()) { openPlayers(); return; } openPlans(); return; }
+  if (mode === 'team') { openTeam(); return; }
   if (!P.current()) { openPlayers(); return; }
   enterSession();
 };
@@ -144,6 +163,8 @@ $('#gGo').onclick = () => {
 
 // ---------- settings ----------
 function renderSettings() {
+  $('#setArena').checked = !!cfg.arena; $('#setGhost').value = cfg.ghost || 'pro'; $('#setSaver').checked = !!cfg.saver;
+  if (cfg.offlineAt) $('#offTxt').textContent = `Ready offline since ${new Date(cfg.offlineAt).toLocaleDateString()}. Tap to refresh.`;
   $('#setSteps').value = String(cfg.stepsAllowed);
   $('#setWhistle').checked = cfg.whistle; $('#setVoice').checked = cfg.voice; $('#setVolume').value = cfg.volume;
   $('#setQuality').value = cfg.quality; $('#setSens').value = cfg.sensitivity; $('#setSkeleton').checked = cfg.skeleton; $('#setMirror').checked = cfg.mirror;
@@ -166,6 +187,10 @@ bindSetting('#setTrack', 'trackView', (el) => el.checked);
 bindSetting('#setPack', 'voicePack', (el) => el.value);
 bindSetting('#setCarry', 'carry', (el) => el.checked);
 bindSetting('#setForm', 'formCoach', (el) => el.checked);
+bindSetting('#setArena', 'arena', (el) => el.checked);
+bindSetting('#setGhost', 'ghost', (el) => el.value);
+bindSetting('#setSaver', 'saver', (el) => el.checked);
+$('#offBtn').onclick = downloadOffline;
 $('#setPack').addEventListener('change', () => { $('#setVoiceDesc').textContent = PACKS[cfg.voicePack]?.desc || ''; });
 $('#packTry').onclick = () => { unlock(); preview(cfg.voicePack); };
 $('#setBallReset').onclick = () => { cfg.ballColor = null; applySettings(); P.save(); renderSettings(); };
@@ -177,6 +202,9 @@ function applySettings() {
   tracker.setColor(cfg.ballColor || DEFAULT_COLOR);
   finder.autoColor = !cfg.ballColor; finder.useAI = cfg.aiBall;
   setPack(cfg.voicePack); ref.setOptions({ carry: cfg.carry });
+  const cp = P.current(), lvl = cp ? P.levelOf(cp.xp).n : 1;
+  sound.kind = allowed(WHISTLES, cp?.style?.whistle, lvl);
+  replay.on = !cfg.saver;
 }
 function hsvCss(c) { return `hsl(${c.h.toFixed(0)} ${(c.s * 100).toFixed(0)}% ${(c.v * 50).toFixed(0)}%)`; }
 
@@ -186,6 +214,7 @@ const ref = new Ref({ stepsAllowed: cfg.stepsAllowed });
 const tracker = new BallTracker();
 const finder = new BallFinder(tracker);
 const hl = new Highlights(video, canvas, stage);
+const replay = new Replay(video);
 const poseHist = [[], [], [], []], pendingForm = [];
 let gameForm = [[], [], [], []], curT = 0, turns = null;
 applySettings();
@@ -208,7 +237,7 @@ async function startCamera() {
   }
   if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('This browser cannot use the camera.'), { name: 'NoCamera' });
   // a smaller picture is much faster to track; the models shrink it anyway
-  const big = cfg.quality === 'accurate';
+  const big = cfg.quality === 'accurate' && !cfg.saver;
   stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: cfg.facing, width: { ideal: big ? 1280 : 854 }, height: { ideal: big ? 720 : 480 }, frameRate: { ideal: 30 } } });
   video.srcObject = stream;
   await video.play().catch(() => {});
@@ -234,7 +263,7 @@ function layout() {
   const W = innerWidth, H = innerHeight, vw = video.videoWidth || 16, vh = video.videoHeight || 9;
   const sc = Math.min(W / vw, H / vh), w = Math.round(vw * sc), h = Math.round(vh * sc);
   Object.assign(stage.style, { width: w + 'px', height: h + 'px', left: ((W - w) >> 1) + 'px', top: ((H - h) >> 1) + 'px' });
-  const dpr = Math.min(2, devicePixelRatio || 1);
+  const dpr = cfg.saver ? 1 : Math.min(2, devicePixelRatio || 1);
   canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
   const tags = $('#tags'); Object.assign(tags.style, { left: stage.style.left, top: stage.style.top, width: w + 'px', height: h + 'px', right: 'auto', bottom: 'auto' });
 }
@@ -245,7 +274,7 @@ async function enterSession() {
   phase = 'setup'; tapMode = 'ball'; hoopPts = []; session = null; game = null; lastCall = null; lastShot = null;
   court = new Court(isGame() ? slotCount() : 1);
   ref.reset(); finder.reset(); learn.done = false; learn.hits.length = 0; applySettings();
-  hl.reset(); turns = null; poseHist.forEach((h) => (h.length = 0)); pendingForm.length = 0; gameForm = [[], [], [], []];
+  hl.reset(); replay.clear(); slides.reset(); quietSince = 0; lastCallTitle = ''; turns = null; poseHist.forEach((h) => (h.length = 0)); pendingForm.length = 0; gameForm = [[], [], [], []];
   ['#turnBoard', '#turnBanner', '#formCard'].forEach((q) => $(q).classList.add('hidden'));
   ['#scoreboard', '#gameboard', '#poss', '#cPause', '#cWave', '#cFix', '#cAddShot', '#cRef', '#refPad', '#cEnd', '#ask', '#count'].forEach((s) => $(s).classList.add('hidden'));
   $('#setup').classList.remove('hidden'); $('#cBack').classList.remove('hidden'); $('#cFlip').classList.remove('hidden');
@@ -300,7 +329,10 @@ function startLoop() {
   }
 }
 
+let skip = 0, quietSince = 0;
+const slides = new SlideCounter();
 function process(now) {
+  if (cfg.saver && phase === 'live' && (skip++ & 1)) return; // battery saver: every other frame
   if (!pose || video.readyState < 2 || !video.videoWidth) return;
   const t0 = performance.now();
   const t = videoSrc ? video.currentTime / (Number(Q.get("slow")) || 1) : now / 1000; // ?slow=4 for slow-motion clips
@@ -310,6 +342,7 @@ function process(now) {
   tracker.grab(video);
   slotPoses = court.assign(all.map((lm) => ({ lm, shirt: shirtOf(lm) })), t, aspect, stage.classList.contains('mirror'));
   lastPose = slotPoses[0] || null;
+  replay.push(now, slotPoses, null, stage.classList.contains('mirror'));
   const people = slotPoses.filter(Boolean).map((lm) => personOf(lm, aspect));
   autoLearn(people[0], aspect);
   slotPoses.forEach((lm, i) => { if (!lm || i > 3) return; const h = poseHist[i]; h.push({ t, lm }); while (h.length && t - h[0].t > 2.5) h.shift(); });
@@ -326,7 +359,11 @@ function process(now) {
       for (const e of ref.update({ t, aspect, pose: lastPose, ball: lastBall, hoop: cfg.hoop, bounds: turns ? null : liveBounds() })) onEvent(e);
       if (TEST && Q.has('trace')) { const b = ref.body, f = (v) => v == null ? '-' : v.toFixed(2); TRACE.push(`${f(t)} ball ${lastBall ? f(lastBall.x) + ',' + f(lastBall.y) + ' r' + lastBall.r.toFixed(3) + ' ' + lastBall.src : '-'} hands ${b ? b.hands.map((h) => h ? f(h.X / aspect) + ',' + f(h.Y) : 'x').join(' ') : 'nobody'} S ${f(ref.S)} near ${ref.near} held ${ref.held} | ${finder.dbg}`); }
       const m = P.MODES[session ? session.mode : 'free'];
-      if (session && m.secs && session.seconds >= m.secs && !endTimer) { session.seconds = m.secs; session.complete = true; whistle(0.7, 2); call('time'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
+      if (session && session.mode === 'slides30' && ref.body) session.drill.slides = slides.push(ref.body.hip.X, ref.S);
+      const limit = m.secs || session?.limit;
+      if (session && limit && session.seconds >= limit && !endTimer) { session.seconds = limit; session.complete = true; whistle(0.7, 2); if (cfg.arena) buzzer(); call('time'); endTimer = setTimeout(endSession, 900); phase = 'done'; }
+      // battery saver: nobody in view for a minute = pause
+      if (cfg.saver && !videoSrc) { if (lastPose) quietSince = 0; else if (!quietSince) quietSince = now; else if (now - quietSince > 60000) { quietSince = 0; $('#cPause').click(); toast('Paused to save battery: nobody in view'); } }
     }
     updateHUD();
   } else if (phase === 'setup' || phase === 'count') {
@@ -568,7 +605,12 @@ function liveBounds() {
   }
   return b;
 }
+let courtSaved = false;
 function startLive() {
+  if (!courtSaved && !videoSrc) { saveCourt(video); courtSaved = true; }
+  if (cfg.arena) crowdOn();
+  $('#cReplay').classList.toggle('hidden', !!cfg.saver);
+  $('#cBoard').classList.remove('hidden');
   if (cfg.bounds) cfg.bounds.side = 0;
   liveBounds();
   if (videoSrc && !Q.get('src')) { video.currentTime = 0; video.play().catch(() => {}); }
@@ -579,10 +621,14 @@ function startLive() {
   $('#cPauseT').textContent = 'Pause';
   if (isGame()) { startGame(); return; }
   if (mode === 'horse') { startTurns(); return; }
-  session = P.newSession(mode); ref.reset();
+  session = P.newSession(mode); ref.reset(); slides.reset();
+  if (stationLimit) { session.limit = stationLimit; }
+  if (session.mode === 'weak30') { const wh = P.weakHand(P.current()); session.weak = wh; toast(`Weak hand: use your ${wh ? 'RIGHT' : 'LEFT'} hand`, true); }
   ['#scoreboard', '#poss'].forEach((s) => $(s).classList.remove('hidden'));
   $('#cAddShot').classList.toggle('hidden', !!cfg.hoop && session.mode !== 'shoot10');
-  $('#sbClockLbl').textContent = P.MODES[mode].secs ? 'Left' : P.MODES[mode].shots ? 'Shots' : 'Time';
+  $('#sbClockLbl').textContent = P.MODES[mode].secs || stationLimit ? 'Left' : P.MODES[mode].shots ? 'Shots' : 'Time';
+  $('#sbDrLbl').textContent = P.MODES[mode].unit && P.MODES[mode].unit !== 'makes' ? P.MODES[mode].unit : 'Dribbles';
+  $('#ghost').classList.toggle('hidden', !(P.MODES[mode].secs && cfg.ghost !== 'off'));
   $('#sbClockWrap').classList.toggle('clock', !!P.MODES[mode].secs);
   updateHUD();
 }
@@ -605,7 +651,7 @@ $('#cPause').onclick = () => {
   if (phase === 'live') { phase = 'paused'; $('#cPauseT').textContent = 'Resume'; if (!game) $('#pillTxt').textContent = 'PAUSED'; else toast('Paused'); }
   else if (phase === 'paused') { phase = 'live'; if (game) for (const r of game.refs) r.reset(); else ref.reset(); $('#cPauseT').textContent = 'Pause'; }
 };
-$('#cEnd').onclick = () => { if (session || game) endSession(); };
+$('#cEnd').onclick = () => { if (session || game || turns) endSession({ quit: true }); };
 $('#cWave').onclick = () => {
   if (game) { if (game.waveOff()) { hideCall(); toast('Call waved off', true); } $('#cWave').classList.add('hidden'); updateHUD(); return; }
   if (!lastCall || !session) return;
@@ -633,6 +679,7 @@ function onEvent(e) {
   const s = session; if (!s) return;
   switch (e.type) {
     case 'dribble': {
+      onDribble(s.drill, e, s.weak ?? 0);
       s.dribbles++; s.bestStreak = Math.max(s.bestStreak, e.streak);
       P.addXP(s, 'dribbles', P.XP.dribble);
       const bonus = P.XP.streak[e.streak];
@@ -644,6 +691,7 @@ function onEvent(e) {
     case 'streakEnd': if (e.streak >= 10 && e.reason !== 'violation') toast(`${e.streak}-dribble streak`); if (hl.why === 'streak' && !hl.keepIt) hl.drop(); break;
     case 'clean': s.clean++; P.addXP(s, 'footwork', P.XP.clean); break;
     case 'shot':
+      s.shotLog.push({ ...(feetSpot() || {}), m: false });
       if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', playerLabel()); }
       if (cfg.formCoach && !e.manual) pendingForm.push({ who: 0, t: curT, due: curT + 0.75 });
       s.shots++; P.addXP(s, 'shots', P.XP.attempt);
@@ -659,7 +707,7 @@ function onEvent(e) {
       s.makeRun = 0; lastCall = e;
       whistle(0.6);
       showCall('bad', e.title, `${e.why}<em>${e.signal} · ${e.tip}</em>`, 2600);
-      call(e.kind, null, null, 350);
+      call(e.kind, null, null, 350); if (cfg.arena) groan(); lastCallTitle = e.title;
       showWave();
       break;
     }
@@ -673,12 +721,15 @@ function made(fixing) {
   const bonus = s.makeRun >= 2 ? P.XP.makeStreak * (s.makeRun - 1) : 0;
   const xp = P.XP.make + Math.min(bonus, 30);
   P.addXP(s, 'shots', xp); lastShot.made = true; lastShot.pending = false; lastShot.xp = xp;
+  const lastShotRec = s.shotLog[s.shotLog.length - 1]; if (lastShotRec) lastShotRec.m = true;
+  if (cfg.arena) cheer(s.makeRun >= 3 ? 3 : 1); celebrateNow(s.makeRun >= 3 ? 2 : 1);
   swish(); showCall('good', s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET', `+${xp} XP${s.makeRun >= 2 ? ` · ${s.makeRun} in a row` : ''}`, 1500);
   if (!fixing) { if (s.makeRun >= 3) call('onfire', s.makeRun); else call('make'); hl.keep(s.makeRun >= 3 ? 'ON FIRE' : 'BUCKET!', playerLabel()); }
   updateFix(); checkShotDrill();
 }
 function missed() {
   const s = session; if (!s) return;
+  const lr = s.shotLog[s.shotLog.length - 1]; if (lr && !lr.done) lr.done = true;
   s.makeRun = 0; if (lastShot) { lastShot.pending = false; lastShot.made = false; }
   if (hl.why === 'shot') hl.drop();
   toast('Miss. Shake it off'); updateFix(); checkShotDrill();
@@ -695,7 +746,13 @@ function updateFix() {
 // ---------- game mode ----------
 let gameClock = 0;
 const callQueue = [];
+let gameShots = {};
 function startGame() {
+  gameShots = {};
+  if (cfg.arena) setTimeout(() => {
+    const intro = [0, 1].map((t) => [0, 1, 2, 3].slice(0, slotCount()).filter((i) => teamOfSlot(i) === t).map((i) => { const pl = slotPlayer(i); return (pl?.num ? `number ${pl.num}, ` : '') + slotName(i); }).join(', and '));
+    say(`Ladies and gentlemen! For ${cfg.teams[0].name}: ${intro[0]}! And for ${cfg.teams[1].name}: ${intro[1]}! Let's play!`, 0, { rate: 1.1, pitch: 1.2 }); cheer(2);
+  }, 400);
   game = new Game({ format: GR.format, rules: { toPoints: GR.toPoints, foulOut: GR.foulOut, bonusAt: GR.bonusAt, stepsAllowed: cfg.stepsAllowed, shotClock: GR.shotClock, carry: cfg.carry } });
   $('#gbHome').style.borderLeft = `4px solid ${teamColor(0)}`; $('#gbAway').style.borderRight = `4px solid ${teamColor(1)}`;
   court.lock(); gameClock = 0;
@@ -729,11 +786,11 @@ function handleGame(evs) {
     const nm = e.who != null ? esc(slotName(e.who)) : '';
     switch (e.type) {
       case 'possession': if (e.changed) toast(`${teamName(e.team)} ball`); break;
-      case 'violation':
+      case 'violation': lastCallTitle = e.title; if (cfg.arena) groan();
         whistle(0.6); showWave();
         queueCall('bad', e.title, `${nm} · ${esc(e.why)}<em>Ball to ${esc(teamName(1 - e.team))} · ${e.tip}</em>`, 2600, () => call(e.kind, null, null, 300));
         break;
-      case 'foul': {
+      case 'foul': { lastCallTitle = e.title; if (cfg.arena) groan();
         whistle(0.5, e.result === 'shooting' ? 2 : 1); showWave();
         const res = e.result === 'shooting' ? (game.andOne ? 'Shooting foul. If it goes in: and-one!' : `${e.fts} free throws`) : e.result === 'bonus' ? 'Bonus: 2 free throws' : e.result === 'turnover' ? `Ball to ${esc(teamName(1 - e.team))}` : `Ball stays with ${esc(teamName(1 - e.team))}`;
         queueCall('bad', e.title, `${nm} on ${esc(slotName(e.on))} · ${e.pf} personal foul${e.pf > 1 ? 's' : ''}<em>${res} · ${e.signal}. ${e.tip}</em>`, 3000, () => call('foul', e.title.charAt(0) + e.title.slice(1).toLowerCase(), null, 300));
@@ -743,12 +800,14 @@ function handleGame(evs) {
       case 'ftStart': queueCall('info', e.andOne ? 'AND ONE' : 'FREE THROWS', `${nm} shoots ${e.n}<em>Everyone else steps back</em>`, 2200, () => (e.andOne ? call('andone') : call('ft', e.n))); break;
       case 'ftResult': if (e.made) swish(); toast(`Free throw ${e.n} of ${e.of}: ${e.made ? 'good' : 'no good'}`, e.made); break;
       case 'points':
+        if (e.kind !== 'ft') { const gl = gameShots[e.who]?.[gameShots[e.who].length - 1]; if (gl) gl.m = true; if (cfg.arena) cheer(e.kind === 'three' ? 3 : 2); celebrateNow(e.kind === 'three' ? 2 : 1); }
         if (e.kind !== 'ft') { swish(); queueCall('good', e.kind === 'three' ? 'THREE!' : 'BUCKET', `${nm} +${e.pts}`, 1400, () => call(e.kind === 'three' ? 'three' : 'make')); hl.keep(e.kind === 'three' ? 'THREE!' : 'BUCKET!', slotLabel(e.who)); }
         break;
       case 'shotResult': if (!e.made) { toast(`${slotName(e.who)}: miss`); if (hl.why === 'shot') hl.drop(); } break;
-      case 'shot': if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', slotLabel(e.who)); } if (cfg.formCoach) pendingForm.push({ who: e.who, t: curT, due: curT + 0.75 }); break;
+      case 'shot': (gameShots[e.who] ||= []).push({ ...(feetSpotOf(slotPoses[e.who]) || {}), m: false }); if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', slotLabel(e.who)); } if (cfg.formCoach) pendingForm.push({ who: e.who, t: curT, due: curT + 0.75 }); break;
       case 'needResult': askShot(); break;
       case 'gameOver':
+        if (cfg.arena) { buzzer(); cheer(3); } celebrateNow(3);
         whistle(0.9, 2); phase = 'done';
         queueCall('good', 'GAME!', `${esc(teamName(e.winner))} win${slotCount() === 2 ? 's' : ''} ${Math.max(...e.score)}-${Math.min(...e.score)}`, 2400, () => call('win', teamName(e.winner)));
         endTimer = setTimeout(endSession, 2800);
@@ -781,6 +840,7 @@ function placeTags() {
 
 let callTimer = 0;
 function showCall(kind, title, sub, ms) {
+  if (board.on) board.call({ kind, title, sub: String(sub || '').replace(/<em>.*$/, '').replace(/<[^>]+>/g, '') });
   const c = $('#call'); c.className = 'call show ' + (kind === 'good' ? 'good' : kind === 'info' ? 'info' : '');
   $('#callTag').textContent = title; $('#callSub').innerHTML = sub; $('#callSub').style.display = sub ? '' : 'none';
   clearTimeout(callTimer); callTimer = setTimeout(hideCall, ms);
@@ -800,6 +860,7 @@ function trackText(bodies) {
   return `${bodies}   ${src}${cfg.hoop ? '   Hoop ✓' : ''}   ${fpsM.fps} fps`;
 }
 function updateHUD() {
+  if (board.on) sendBoard();
   if (game) {
     setText('#gbHomeScore', String(game.score[0])); setText('#gbAwayScore', String(game.score[1]));
     const fouls = (t) => `Fouls ${game.teamFouls[t]}${GR.bonusAt && game.teamFouls[1 - t] >= GR.bonusAt ? '<span class="bonus">BONUS</span>' : ''}`;
@@ -812,8 +873,14 @@ function updateHUD() {
   }
   const s = session; if (!s) return;
   const m = P.MODES[s.mode];
-  setText('#sbClock', m.secs ? String(Math.max(0, Math.ceil(m.secs - s.seconds))) : m.shots ? `${s.shots}/${m.shots}` : fmtTime(s.seconds));
-  setText('#sbDribbles', String(s.dribbles));
+  const lim = m.secs || s.limit;
+  setText('#sbClock', lim ? String(Math.max(0, Math.ceil(lim - s.seconds))) : m.shots ? `${s.shots}/${m.shots}` : fmtTime(s.seconds));
+  setText('#sbDribbles', String(m.unit && m.unit !== 'makes' ? m.score(s) : s.dribbles));
+  if (m.secs && cfg.ghost !== 'off') {
+    const mine = m.score(s), target = cfg.ghost === 'best' ? (P.current()?.bests?.[s.mode] ?? PRO[s.mode]) : PRO[s.mode];
+    const gh = (target * Math.min(s.seconds, m.secs)) / m.secs, max = Math.max(target, mine, 1);
+    setHTML('#ghost', `<div>YOU<i><u style="width:${(100 * mine) / max}%;background:var(--orange)"></u></i><b>${mine}</b></div><div>${cfg.ghost === 'best' ? 'BEST' : 'PRO'}<i><u style="width:${(100 * gh) / max}%;background:#8a9bb8"></u></i><b>${Math.floor(gh)}</b></div>`);
+  }
   setText('#sbStreak', String(ref.streak));
   setText('#sbFG', `${s.makes}/${s.shots}`);
   setText('#sbXP', String(s.xp));
@@ -843,9 +910,13 @@ function updateHUD() {
 }
 
 // ---------- end + summary ----------
-function endSession() {
+function endSession(opts = {}) {
   clearTimeout(endTimer); endTimer = 0; closeAsk(); hideCall(); callQueue.length = 0;
-  hl.drop();
+  hl.drop(); crowdOff(); $('#ghost').classList.add('hidden');
+  if (plan && session && !opts.quit) { stationDone(); return; }
+  if (teamRun && session && !opts.quit) { teamTurnDone(); return; }
+  if (plan) { const pl = plan; plan = null; stationLimit = 0; const s0 = session; session = null; if (s0 && s0.seconds > 5) pl.results.push({ step: pl.steps[pl.i], s: s0, res: P.finish(s0) }); phase = 'off'; stopCamera(); renderPlanSummary(pl); go('sSummary'); return; }
+  if (teamRun) { const tr = teamRun; teamRun = null; session = null; phase = 'off'; stopCamera(); renderTeamSummary(tr); go('sSummary'); return; }
   if (turns) { const tn = turns; turns = null; phase = 'off'; stopCamera(); renderTurnsSummary(tn); go('sSummary'); return; }
   if (game) { const gm = game; game = null; phase = 'off'; stopCamera(); renderGameSummary(gm); go('sSummary'); return; }
   const s = session; if (!s) return;
@@ -880,6 +951,8 @@ function renderSummary(s, res) {
     <div class="sumhead"><div class="k">${m.name} · ${fmtTime(s.seconds)}${s.complete === false && (m.secs || m.shots) ? ' · ended early' : ''}</div>
       <h2>Session over</h2><div class="xp">+${s.xp} XP</div></div>
     ${up ? `<div class="lvlup">Level up! Level ${lv.n} · ${lv.name}</div>` : ''}
+    ${drill?.daily ? `<div class="lvlup" style="border-color:var(--orange);color:var(--orange);background:#2a1a08">Daily challenge done! ${drill.daily.streak}-day streak · +${drill.daily.xp} XP</div>` : ''}
+    ${s.beatPro ? `<div class="lvlup" style="border-color:var(--green);color:var(--green);background:#0d2a1d">You beat the pro (${PRO[s.mode]})!</div>` : ''}
     ${drillLine}
     ${res ? playerCardHTML(res, up, 'sumBar') : ''}
     <div class="stats">
@@ -897,7 +970,7 @@ function renderSummary(s, res) {
     </div>
     ${formSummaryHTML(s.formScores)}
     ${clipsHTML()}
-    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button>${drill?.score != null && boardsOn() ? '<button class="btn" id="postBoard">Post to today\'s leaderboard</button>' : ''}<button class="btn primary" id="again">Play again</button></div>`;
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button>${drill?.score != null && boardsOn() && BOARDS[s.mode] ? '<button class="btn" id="postBoard">Post to today\'s leaderboard</button>' : ''}<button class="btn primary" id="again">Play again</button></div>`;
   $('#postBoard')?.addEventListener('click', () => openBoard(s.mode, drill.score, res.player.name));
   $('#again').onclick = () => enterSession();
   animateBars(res ? [[res, 'sumBar']] : []);
@@ -982,10 +1055,20 @@ function renderProfile() {
     <div class="stats">${['dribble30', 'shoot10'].map((id) => `<div class="stat"><b>${p.bests[id] ?? '–'}</b><span>${modeName(id)}</span></div>`).join('')}</div>
     <p class="label" style="margin-top:20px">Badges · ${Object.keys(p.badges).length}/${P.BADGES.length}</p>
     <div class="badges">${P.BADGES.map((b) => badgeHTML(b, !!p.badges[b.id])).join('')}</div>
+    <p class="label" style="margin-top:20px">Ref style · unlock more by levelling up</p>
+    ${[['theme', 'Scoreboard theme', THEMES], ['whistle', 'Whistle', WHISTLES], ['celebrate', 'Celebration', CELEBRATIONS]].map(([k, n, list]) => `<p style="margin:10px 0 6px;font-weight:600">${n}</p><div class="stylegrid">${list.map((it) => `<button data-style="${k}" data-v="${it.id}" class="${(p.style?.[k] || list[0].id) === it.id ? 'on' : ''}" ${it.lvl > L.n ? 'disabled' : ''}><b>${it.name}</b><span>${it.lvl > L.n ? 'Unlocks at level ' + it.lvl : 'Unlocked'}</span></button>`).join('')}</div>`).join('')}
+    <div style="margin-top:20px">${shotChartHTML(p.shotLog.slice(-200))}</div>
     <p class="label" style="margin-top:20px">Recent sessions</p>
     <div class="card scroll-x" style="padding:6px 10px">${p.history.length ? `<table class="hist"><tr><th>Date</th><th>Mode</th><th>Time</th><th>Dribbles</th><th>Streak</th><th>FG</th><th>Calls</th><th>XP</th></tr>
       ${p.history.map((h) => `<tr><td>${new Date(h.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td><td>${modeName(h.mode)}${h.score ? ` ${h.won ? 'W' : 'L'} ${h.score[0]}-${h.score[1]}` : ''}</td><td>${fmtTime(h.seconds)}</td><td>${h.dribbles}</td><td>${h.bestStreak}</td><td>${h.makes}/${h.shots}</td><td>${h.travels + h.doubles}${h.fouls ? ` +${h.fouls} PF` : ''}</td><td>+${h.xp}</td></tr>`).join('')}</table>` : '<p style="color:var(--dim)">No sessions yet.</p>'}</div>`;
   $('#prSwitch').onclick = openPlayers;
+  document.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {
+    P.setStyle(p, b.dataset.style, b.dataset.v); applySettings();
+    if (b.dataset.style === 'theme') applyTheme(b.dataset.v);
+    if (b.dataset.style === 'whistle') { unlock(); whistle(0.4); }
+    if (b.dataset.style === 'celebrate') celebrate(b.dataset.v, 1);
+    renderProfile();
+  });
   $('#prDel').onclick = () => { if (confirm(`Delete ${p.name} and all their progress?`)) { P.removePlayer(p.id); renderProfile(); } };
 }
 
@@ -1035,6 +1118,7 @@ $('#btnSync').onclick = () => { if (window.GameSync && !TEST) GameSync.open(); e
 // ---------- coach dashboard ----------
 let dashPid = null, dashRange = 20;
 function renderDash() {
+  setTimeout(() => { const pl = P.players().find((x) => x.id === (dashPid || P.current()?.id)); if (pl && $('#dash')) $('#dash').insertAdjacentHTML('beforeend', `<div style="margin-top:14px">${shotChartHTML(pl.shotLog.slice(-200))}</div>`); });
   renderDashboard($('#dash'), P.players(), dashPid || P.current()?.id, dashRange, (pid, range) => { dashPid = pid; dashRange = range; renderDash(); });
 }
 
@@ -1089,7 +1173,7 @@ function feetSpot() {
 let turnShotSpot = null;
 function turnEvent(e) {
   if (e.type === 'shot') {
-    turnShotSpot = feetSpot();
+    turnShotSpot = feetSpot(); (turnShots[turns.state().who] ||= []).push({ ...(turnShotSpot || {}), m: false });
     if (hl.why !== 'shot' || !hl.recording) { hl.drop(); hl.begin('shot', slotName(turns.state().who)); }
     if (cfg.formCoach && !e.manual) pendingForm.push({ who: turns.state().who, t: curT, due: curT + 0.75 });
   } else if (e.type === 'shotResult') {
@@ -1098,6 +1182,8 @@ function turnEvent(e) {
 }
 function turnShot(made) {
   const who = turns.state().who, nm = slotName(who);
+  const tl = turnShots[who]?.[turnShots[who].length - 1]; if (tl && made) tl.m = true;
+  if (made) { if (cfg.arena) cheer(1); celebrateNow(1); } else if (cfg.arena) groan();
   if (made) { swish(); hl.keep('BUCKET!', nm); } else if (hl.why === 'shot') hl.drop();
   let speak = true;
   for (const e of turns.shot(made, turnShotSpot || feetSpot())) {
@@ -1137,8 +1223,195 @@ function renderTurnsSummary(tn) {
   animateBars(results.map((r, k) => [r.res, 'tbar' + k]));
 }
 
+// ---------- celebrations, replay, helpers ----------
+let lastCallTitle = '';
+function celebrateNow(power) { const cp = P.current(); if (!cp) return; celebrate(allowed(CELEBRATIONS, cp.style?.celebrate, P.levelOf(cp.xp).n), power); }
+function feetSpotOf(lm) { if (!lm || !lm[27] || !lm[28]) return null; return { x: (lm[27].x + lm[28].x) / 2, y: Math.max(lm[27].y, lm[28].y) }; }
+let turnShots = {};
+$('#cReplay').onclick = () => {
+  const wasLive = phase === 'live'; if (wasLive) $('#cPause').click();
+  const cols = slotPoses.map((_, i) => (isGame() ? teamColor(teamOfSlot(i)) : '#eef3fb'));
+  if (!replay.open(lastCallTitle, cols)) { toast('Nothing to replay yet'); if (wasLive) $('#cPause').click(); return; }
+  const iv = setInterval(() => { if (!document.querySelector('.replay')) { clearInterval(iv); if (wasLive && phase === 'paused') $('#cPause').click(); } }, 300);
+};
+
+// ---------- offline: fetch every file once so the service worker keeps a copy ----------
+async function downloadOffline() {
+  const V = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  const M = 'https://storage.googleapis.com/mediapipe-models/';
+  const urls = [V + '/vision_bundle.mjs', V + '/wasm/vision_wasm_internal.js', V + '/wasm/vision_wasm_internal.wasm', V + '/wasm/vision_wasm_nosimd_internal.js', V + '/wasm/vision_wasm_nosimd_internal.wasm',
+    M + 'pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', M + 'pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+    'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', ...['js/main.js', 'js/ref.js', 'js/ball.js', 'js/pose.js', 'js/game.js', 'js/form.js', 'js/turns.js', 'js/drills.js', 'js/styles.js', 'js/replay.js', 'js/shotchart.js', 'js/report.js', 'js/board.js', 'js/voice.js', 'js/audio.js', 'js/highlights.js', 'js/dashboard.js', 'js/progress.js', 'sync.js', 'install.js', 'index.html']];
+  if (cfg.aiBall) urls.push(M + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite');
+  const btn = $('#offBtn'), txt = $('#offTxt'); btn.disabled = true;
+  let ok = 0, bytes = 0;
+  for (const u of urls) {
+    txt.textContent = `Downloading ${ok + 1} of ${urls.length}…`;
+    try { const r = await fetch(u, { cache: 'reload' }); if (r.ok) { bytes += (await r.blob()).size; ok++; } } catch { /* offline right now */ }
+  }
+  btn.disabled = false;
+  if (ok === urls.length && navigator.serviceWorker?.controller) { cfg.offlineAt = Date.now(); P.save(); txt.textContent = `Ready offline (${(bytes / 1e6).toFixed(0)} MB saved on this device).`; }
+  else txt.textContent = navigator.serviceWorker?.controller ? `Got ${ok} of ${urls.length} files. Connect to the internet and try again.` : 'Install the app (or reload once) first, then download again.';
+}
+
+// ---------- practice plans ----------
+let plan = null, stationLimit = 0;
+function openPlans() {
+  $('#planList').innerHTML = Object.entries(PLANS).map(([id, pl]) => `<button class="mode" data-plan="${id}"><div class="ic">${svg('cal')}</div><div><b>${pl.name}</b><span>${pl.desc} · ${pl.steps.length} stations</span></div></button>`).join('');
+  document.querySelectorAll('[data-plan]').forEach((b) => b.onclick = () => { $('#mPlan').classList.remove('on'); startPlan(b.dataset.plan); });
+  $('#mPlan').classList.add('on');
+}
+$('#mPlanClose').onclick = () => $('#mPlan').classList.remove('on');
+function startPlan(id) {
+  const pl = PLANS[id]; plan = { id, name: pl.name, steps: pl.steps, i: 0, results: [] };
+  setStation(); enterSession();
+}
+function setStation() { const st = plan.steps[plan.i]; mode = st.mode; stationLimit = st.secs || 0; }
+function stationDone() {
+  const s0 = session; session = null; phase = 'off';
+  plan.results.push({ step: plan.steps[plan.i], s: s0, res: P.finish(s0) });
+  plan.i++;
+  if (plan.i >= plan.steps.length) { const pl = plan; plan = null; stationLimit = 0; stopCamera(); renderPlanSummary(pl); go('sSummary'); return; }
+  setStation();
+  const st = plan.steps[plan.i], m = P.MODES[st.mode];
+  upNext(`Station ${plan.i + 1} of ${plan.steps.length}`, st.name || m.name, st.secs ? `${Math.round(st.secs / 60 * 10) / 10} minutes` : m.desc, REST_SECS, () => startLive());
+}
+function upNext(kicker, title, sub, secs, then) {
+  const el = $('#nextUp'); let n = secs;
+  ['#scoreboard', '#poss', '#ghost'].forEach((q) => $(q).classList.add('hidden'));
+  const draw = () => { el.innerHTML = `<div><div class="k">${esc(kicker)}</div><h2>${esc(title)}</h2><p>${esc(sub)}</p><div class="n">${n}</div><button class="btn" id="nuGo">Start now</button></div>`; $('#nuGo').onclick = go1; };
+  const go1 = () => { clearInterval(iv); el.classList.add('hidden'); whistle(0.4); then(); };
+  el.classList.remove('hidden'); draw(); call('setshot', title, null, 300);
+  const iv = setInterval(() => { n--; if (n <= 0) go1(); else { draw(); if (n <= 3) beep(660, 0.12); } }, 1000);
+}
+function renderPlanSummary(pl) {
+  const xp = pl.results.reduce((a, r) => a + (r.s?.xp || 0), 0);
+  $('#summary').innerHTML = `<div class="sumhead"><div class="k">Practice plan</div><h2>${esc(pl.name)}</h2><div class="xp">+${xp} XP</div></div>
+    <div class="card scroll-x" style="padding:6px 10px"><table class="box"><tr><th>Station</th><th>Score</th><th>Best</th><th>XP</th></tr>
+    ${pl.results.map((r) => { const m = P.MODES[r.step.mode]; const sc = r.res?.drill?.score; return `<tr><td>${esc(r.step.name || m.name)}</td><td>${sc != null ? sc + ' ' + (m.unit || '') : r.s.dribbles + ' dribbles'}</td><td>${r.res?.drill?.isBest ? '<span class="pbflag">NEW BEST</span>' : P.current()?.bests?.[r.step.mode] ?? '–'}</td><td>+${r.s.xp}</td></tr>`; }).join('')}</table></div>
+    <p style="color:var(--dim)">${pl.results.length} of ${pl.steps.length} stations done.</p>
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn primary" id="again">Run it again</button></div>`;
+  $('#again').onclick = () => startPlan(pl.id);
+}
+
+// ---------- team mode ----------
+let teamRun = null;
+const TM = (cfg.teamMode ||= { kids: [], drill: 'dribble30', rounds: 1 });
+function openTeam() {
+  const players = P.players();
+  $('#teamKids').innerHTML = players.map((p) => `<label><input type="checkbox" value="${p.id}" ${TM.kids.includes(p.id) ? 'checked' : ''}>${esc(p.name)}${p.num ? ' #' + esc(p.num) : ''}</label>`).join('') || '<p style="color:var(--dim)">Add players first.</p>';
+  $('#teamDrill').innerHTML = Object.entries(P.MODES).filter(([, m]) => m.drill).map(([id, m]) => `<option value="${id}" ${TM.drill === id ? 'selected' : ''}>${m.name}</option>`).join('');
+  document.querySelectorAll('#teamRounds button').forEach((b) => b.classList.toggle('on', +b.dataset.v === TM.rounds));
+  $('#mTeam').classList.add('on');
+}
+$('#teamKids').addEventListener('change', () => { TM.kids = [...document.querySelectorAll('#teamKids input:checked')].map((i) => i.value); P.save(); });
+$('#teamDrill').onchange = () => { TM.drill = $('#teamDrill').value; P.save(); };
+document.querySelectorAll('#teamRounds button').forEach((b) => b.onclick = () => { TM.rounds = +b.dataset.v; P.save(); openTeam(); });
+$('#teamAdd').onclick = () => { $('#mTeam').classList.remove('on'); openPlayers(); };
+$('#mTeamClose').onclick = () => $('#mTeam').classList.remove('on');
+$('#teamGo').onclick = () => {
+  const kids = TM.kids.filter((id) => P.players().some((p) => p.id === id));
+  if (kids.length < 2) { toast('Pick at least 2 players'); return; }
+  $('#mTeam').classList.remove('on');
+  const queue = []; for (let r = 0; r < TM.rounds; r++) for (const k of kids) queue.push(k);
+  teamRun = { queue, i: 0, drill: TM.drill, results: [] };
+  mode = TM.drill; P.select(queue[0]); enterSession();
+};
+function teamTurnDone() {
+  const s0 = session; session = null; phase = 'off';
+  const res = P.finish(s0, teamRun.queue[teamRun.i]);
+  teamRun.results.push({ pid: teamRun.queue[teamRun.i], score: res?.drill?.score ?? null, xp: s0.xp, best: res?.drill?.isBest });
+  teamRun.i++;
+  if (teamRun.i >= teamRun.queue.length) { endSession({ quit: true }); return; }
+  const next = P.players().find((p) => p.id === teamRun.queue[teamRun.i]); P.select(next.id); applySettings();
+  upNext(`Turn ${teamRun.i + 1} of ${teamRun.queue.length}`, `Up next: ${next.num ? '#' + next.num + ' ' : ''}${next.name}`, P.MODES[teamRun.drill].desc, 10, () => startLive());
+}
+function renderTeamSummary(tr) {
+  const by = {}; for (const r of tr.results) { const b = (by[r.pid] ||= { pid: r.pid, best: null, turns: 0, xp: 0 }); b.turns++; b.xp += r.xp; if (r.score != null) b.best = Math.max(b.best ?? -1, r.score); }
+  const rows = Object.values(by).sort((a, b) => (b.best ?? -1) - (a.best ?? -1));
+  const name = (id) => P.players().find((p) => p.id === id)?.name || '?';
+  const m = P.MODES[tr.drill];
+  $('#summary').innerHTML = `<div class="sumhead"><div class="k">Team mode · ${esc(m.name)}</div><h2>Results</h2></div>
+    <div class="card scroll-x" style="padding:6px 10px"><table class="box"><tr><th>#</th><th>Player</th><th>Best</th><th>Turns</th><th>XP</th></tr>
+    ${rows.map((r, k) => `<tr><td>${k + 1}</td><td>${esc(name(r.pid))}</td><td><b>${r.best ?? '–'}</b> ${esc(m.unit || '')}</td><td>${r.turns}</td><td>+${r.xp}</td></tr>`).join('')}</table></div>
+    <div class="row" style="margin-top:18px"><button class="btn" data-go="sHome">Home</button><button class="btn" id="teamPrint">Print reports</button><button class="btn primary" id="again">Run it again</button></div>`;
+  $('#again').onclick = () => { openTeam(); };
+  $('#teamPrint').onclick = () => printReports(rows.map((r) => r.pid), `<div class="card" style="margin-top:14px"><p class="label">Today's team drill</p><p style="margin:0">${esc(m.name)}</p></div>`);
+}
+function printReports(pids, extra = '') {
+  $('#printArea').innerHTML = pids.map((id) => { const pl = P.players().find((p) => p.id === id); return pl ? `<div class="page">${reportHTML(buildReport(pl, 7), extra)}</div>` : ''; }).join('');
+  window.print();
+}
+
+// ---------- parent report ----------
+let repDays = 7, repPid = null;
+function renderReport() {
+  const players = P.players();
+  if (!players.length) { $('#report').innerHTML = '<div class="card empty-player"><p>No players yet.</p></div>'; return; }
+  const pl = players.find((x) => x.id === repPid) || P.current() || players[0]; repPid = pl.id;
+  $('#repWho').innerHTML = players.map((x) => `<option value="${x.id}" ${x.id === pl.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  document.querySelectorAll('#repDays button').forEach((b) => b.classList.toggle('on', +b.dataset.d === repDays));
+  $('#report').innerHTML = reportHTML(buildReport(pl, repDays));
+}
+$('#repWho').onchange = () => { repPid = $('#repWho').value; renderReport(); };
+document.querySelectorAll('#repDays button').forEach((b) => b.onclick = () => { repDays = +b.dataset.d; renderReport(); });
+$('#repPrint').onclick = () => { const pl = P.players().find((x) => x.id === repPid); if (pl) printReports([pl.id]); };
+$('#repShare').onclick = async () => {
+  const pl = P.players().find((x) => x.id === repPid); if (!pl) return;
+  const url = `${location.origin}${location.pathname}?report=${encodeReport(buildReport(pl, repDays))}`;
+  try { if (navigator.share) { await navigator.share({ title: `${pl.name}'s basketball report`, url }); return; } } catch { /* cancelled */ }
+  try { await navigator.clipboard.writeText(url); toast('Link copied', true); } catch { prompt('Copy this link:', url); }
+};
+// a shared report link opens read-only
+const sharedReport = Q.get('report') ? decodeReport(Q.get('report')) : null;
+
+// ---------- second screen scoreboard ----------
+const board = new BoardHost();
+$('#cBoard').onclick = async () => {
+  const w = document.createElement('div'); w.className = 'modal on';
+  w.innerHTML = `<div class="card" style="width:min(420px,100%);text-align:center"><h2 style="font:800 26px var(--display);letter-spacing:.06em;margin:0 0 8px">SCOREBOARD SCREEN</h2><p id="bdTxt" style="color:var(--dim)">Opening…</p><div class="row" style="margin-top:12px"><button class="btn" data-x>Close</button></div></div>`;
+  document.body.appendChild(w);
+  w.addEventListener('click', (e) => { if (e.target === w || e.target.closest('[data-x]')) w.remove(); });
+  try {
+    const code = await board.start(), link = `${location.origin}${location.pathname}?board=${code}`;
+    w.querySelector('#bdTxt').innerHTML = `On another phone or tablet, open:<br><b style="color:var(--text);word-break:break-all">${esc(link)}</b><br><br>or open WHISTLE there and go to <b>?board=${code}</b><div style="font:800 64px/1 var(--display);color:var(--orange);margin-top:12px;letter-spacing:.1em">${code}</div>`;
+    sendBoard();
+  } catch (e) { w.querySelector('#bdTxt').textContent = 'Could not open the scoreboard: ' + e.message + '. Check the internet connection.'; }
+};
+function sendBoard() {
+  const now = performance.now(); if (now - (sendBoard.t || 0) < 250) return; sendBoard.t = now;
+  if (game) {
+    board.state({ kind: 'game', clock: game.rules.shotClock ? String(Math.max(0, Math.ceil(game.clock))) : fmtTime(gameClock), clockLbl: game.rules.shotClock ? 'Shot clock' : 'Time',
+      teams: [0, 1].map((t) => ({ name: slotCount() === 2 ? slotName(t) : cfg.teams[t].name, score: game.score[t], fouls: game.teamFouls[t], color: teamColor(t), poss: game.poss != null && teamOfSlot(game.poss) === t })) });
+  } else if (turns) {
+    board.state({ kind: 'turns', title: turns.kind === 'horse' ? turns.word : 'Knockout', players: Array.from({ length: turns.n }, (_, i) => ({ name: slotName(i), letters: turns.word.slice(0, turns.letters[i]), out: turns.out[i], cur: turns.state().who === i })) });
+  } else if (session) {
+    const m = P.MODES[session.mode], lim = m.secs || session.limit;
+    board.state({ kind: 'solo', title: (P.current()?.name || '') + ' · ' + m.name, tiles: [[lim ? String(Math.max(0, Math.ceil(lim - session.seconds))) : fmtTime(session.seconds), lim ? 'Left' : 'Time'], [String(m.unit && m.unit !== 'makes' ? m.score(session) : session.dribbles), m.unit && m.unit !== 'makes' ? m.unit : 'Dribbles'], [String(ref.streak), 'Streak'], [`${session.makes}/${session.shots}`, 'FG'], [String(session.xp), 'XP']] });
+  }
+}
+function boardView(code) {
+  document.querySelectorAll('.screen').forEach((x) => x.classList.toggle('on', x.id === 'sBoardView'));
+  const bv = $('#bv'); let st = null, callT = 0, callHTML = '';
+  const draw = () => {
+    let body = '';
+    if (!st) body = '';
+    else if (st.kind === 'game') body = `<div class="teams">${st.teams.map((t) => `<div class="team" style="border-color:${t.color}"><span>${esc(t.name)}${t.poss ? ' ●' : ''}</span><b>${t.score}</b><small>Fouls ${t.fouls}</small></div>`).join('')}</div><div class="tiles"><div class="tile"><b>${esc(st.clock)}</b><span>${esc(st.clockLbl)}</span></div></div>`;
+    else if (st.kind === 'turns') body = `<div class="title">${esc(st.title)}</div><div class="tiles">${st.players.map((p) => `<div class="tile" style="${p.cur ? 'outline:3px solid var(--orange)' : ''}${p.out ? ';opacity:.4' : ''}"><b style="color:var(--red)">${esc(p.letters || (p.out ? 'OUT' : '–'))}</b><span>${esc(p.name)}</span></div>`).join('')}</div>`;
+    else body = `<div class="title">${esc(st.title)}</div><div class="tiles">${st.tiles.map(([v, l]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>`;
+    bv.innerHTML = `<div class="title">WHISTLE scoreboard · ${esc(code)}</div>${body}${performance.now() < callT ? callHTML : ''}<p style="color:var(--dim)" id="bvStatus"></p>`;
+  };
+  joinBoard(code, (m) => {
+    if (m.t === 'state') st = m.st;
+    if (m.t === 'call') { callHTML = `<div class="callbig ${m.c.kind === 'good' ? 'good' : m.c.kind === 'info' ? 'info' : ''}">${esc(m.c.title)}</div><p style="font-size:20px">${esc(m.c.sub)}</p>`; callT = performance.now() + 3500; setTimeout(draw, 3600); }
+    draw();
+  }, (msg) => { const el = $('#bvStatus'); if (el) el.textContent = msg; else if (msg) bv.insertAdjacentHTML('beforeend', `<p style="color:var(--dim)" id="bvStatus">${esc(msg)}</p>`); }).catch((e) => { bv.insertAdjacentHTML('beforeend', `<p>Could not connect: ${esc(e.message)}</p>`); });
+}
+
 // ---------- boot ----------
 renderHome();
+if (Q.get('board')) boardView(Q.get('board'));
+else if (sharedReport) { go('sReport'); $('#repBar').classList.add('hidden'); $('#report').innerHTML = reportHTML(sharedReport, '<p style="color:var(--faint);font-size:12px;margin-top:14px">Shared from WHISTLE · Basketball Ref & Coach</p>'); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'live' && !videoSrc) $('#cPause').click(); });
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if ($('#mPlayers').classList.contains('on')) $('#mPlayersClose').click(); else if ($('#mGame').classList.contains('on')) $('#mGameClose').click(); }
@@ -1163,4 +1436,4 @@ if (window.GameSync && !TEST) {
   });
 }
 const TSTATS = { frames: 0, pose: 0, ball: 0, ai: 0, ms: 0 }, TLOG = [], TRACE = [];
-if (TEST) window.__wh = { hl, get turns() { return turns; }, turnShot, formResult, renderDash, stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };
+if (TEST) window.__wh = { replay, board, get plan() { return plan; }, get teamRun() { return teamRun; }, startPlan, sendBoard, hl, get turns() { return turns; }, turnShot, formResult, renderDash, stats: TSTATS, log: TLOG, trace: TRACE, video, ref, tracker, finder, P, onEvent, handleGame, get game() { return game; }, get session() { return session; }, get phase() { return phase; }, get fps() { return fpsM.fps; }, endSession, go, enterSession, setMode: (m) => { mode = m; } };

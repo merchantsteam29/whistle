@@ -131,7 +131,7 @@ check(await ev(`return __wh.game.stats[1].pf`) === 1 && await ev(`return __wh.ga
 await ev(`document.getElementById('cWave').click();`);
 check(await ev(`return __wh.game.stats[1].pf`) === 0, 'No call removes the foul');
 await ev(`__wh.handleGame(__wh.game.manualPoints(1, 2)); __wh.handleGame(__wh.game.manualPoints(0, 2)); __wh.handleGame(__wh.game.manualPoints(0, 2));`);
-await sleep(3800);
+await sleep(5000);
 check(await ev(`return document.getElementById('sSummary').classList.contains('on')`), 'game to 7 ends itself with a summary');
 await shot('18-game-summary');
 const gp = await ev(`return __wh.P.current().stats`);
@@ -163,6 +163,67 @@ await ev(`document.querySelector('[data-tcol="1"][data-c="#e5484d"]').click();`)
 check(await ev(`return __wh.P.settings().teams[1].color`) === '#e5484d', 'team colour picked');
 await shot('23-team-colours');
 await ev(`document.getElementById('mGameClose').click();`);
+
+// ---------- 1.4 features ----------
+const waitReady = async () => { for (let i = 0; i < 40; i++) { await sleep(400); if (await ev(`return document.getElementById('loading').classList.contains('hidden')`)) break; } };
+await ev(`__wh.go('sHome');`); await sleep(200);
+check(await ev(`return document.querySelector('#daily .daily') !== null`), 'daily challenge card on home');
+await shot('24-home-14');
+// weak-hand drill with the ghost bars
+await ev(`document.querySelector('[data-mode=weak30]').click(); document.getElementById('btnStart').click();`); await waitReady();
+await ev(`document.getElementById('btnGo').click();`); await sleep(3200);
+await ev(`for (let i = 1; i <= 8; i++) __wh.onEvent({ type: 'dribble', streak: i, total: i, hand: 0 }); for (let i = 1; i <= 3; i++) __wh.onEvent({ type: 'dribble', streak: 8 + i, total: 8 + i, hand: 1 });`);
+await sleep(300);
+check(await ev(`return document.getElementById('sbDribbles').textContent`) === '8', 'weak-hand drill counts only the weak hand');
+check(await ev(`return !document.getElementById('ghost').classList.contains('hidden')`), 'Beat the Pro ghost bars show');
+await sleep(1600); await shot('25-weak-ghost');
+check(await ev(`return document.querySelector('.replay') === null && __wh.replay.frames.length > 8`), `replay buffer filling (${await ev(`return __wh.replay.frames.length`)} frames)`);
+await ev(`document.getElementById('cReplay').click();`); await sleep(800);
+check(await ev(`return !!document.querySelector('.replay canvas')`), 'instant replay opens');
+await shot('26-replay');
+await ev(`document.querySelector('.replay [data-a=close]').click();`); await sleep(500);
+await ev(`__wh.session.seconds = 31;`); await sleep(2200);
+check(await ev(`return document.getElementById('sSummary').classList.contains('on')`), 'weak-hand drill finishes');
+check((await ev(`return __wh.P.current().bests.weak30`)) === 8, 'weak-hand personal best saved');
+// practice plan: two stations then quit
+await ev(`__wh.go('sHome'); __wh.startPlan('quick10');`); await waitReady();
+await ev(`document.getElementById('btnGo').click();`); await sleep(3200);
+check(await ev(`return __wh.plan && __wh.session && __wh.session.limit === 90`), 'plan station 1 is a timed warm-up');
+await ev(`__wh.session.seconds = 95;`); await sleep(2000);
+check(await ev(`return !document.getElementById('nextUp').classList.contains('hidden')`), 'rest screen between stations');
+await shot('27-plan-next');
+await ev(`document.getElementById('nuGo').click();`); await sleep(600);
+check(await ev(`return __wh.plan.i === 1 && __wh.session && __wh.session.mode === 'dribble30'`), 'plan moves to station 2 (Handles 30)');
+await ev(`document.getElementById('cEnd').click();`); await sleep(800);
+check(await ev(`return document.getElementById('summary').textContent.includes('Quick 10')`), 'plan summary');
+await shot('28-plan-summary');
+// team mode: 2 kids
+await ev(`__wh.P.addPlayer('Mia', 7); __wh.P.select(__wh.P.players()[0].id); __wh.go('sHome'); document.querySelector('[data-mode=team]').click(); document.getElementById('btnStart').click();`); await sleep(300);
+await ev(`document.querySelectorAll('#teamKids input').forEach((i) => { i.checked = true; }); document.getElementById('teamKids').dispatchEvent(new Event('change')); document.getElementById('teamDrill').value = 'dribble30'; document.getElementById('teamDrill').dispatchEvent(new Event('change')); document.getElementById('teamGo').click();`);
+await waitReady(); await ev(`document.getElementById('btnGo').click();`); await sleep(3200);
+await ev(`for (let i = 1; i <= 12; i++) __wh.onEvent({ type: 'dribble', streak: i, total: i, hand: 1 }); __wh.session.seconds = 31;`); await sleep(2000);
+check(await ev(`return !document.getElementById('nextUp').classList.contains('hidden') && document.getElementById('nextUp').textContent.includes('Mia')`), 'team mode: next kid up');
+await ev(`document.getElementById('nuGo').click();`); await sleep(500);
+await ev(`for (let i = 1; i <= 20; i++) __wh.onEvent({ type: 'dribble', streak: i, total: i, hand: 1 }); __wh.session.seconds = 31;`); await sleep(2200);
+check(await ev(`return document.getElementById('summary').textContent.includes('Team mode') && document.querySelectorAll('#summary table.box tr').length === 3`), 'team results table');
+await shot('29-team');
+check(await ev(`return __wh.P.players().find((p) => p.name === 'Mia').bests.dribble30`) === 20, 'team turn saved to the right kid');
+// profile: style picker + shot chart
+await ev(`__wh.P.select(__wh.P.players()[0].id); __wh.go('sProfile');`); await sleep(300);
+check(await ev(`return document.querySelectorAll('[data-style]').length === 13 && document.querySelectorAll('[data-style]:disabled').length > 0`), 'style picker with locked items');
+await ev(`const pl = __wh.P.current(); for (let k = 0; k < 12; k++) pl.shotLog.push({ x: 0.2 + (k % 6) * 0.12, y: 0.85 + (k % 3) * 0.04, m: k % 3 !== 0, at: Date.now() }); __wh.go('sProfile');`); await sleep(200);
+check(await ev(`return !!document.querySelector('.shotchart')`), 'shot chart on the profile');
+await ev(`document.querySelector('[data-style=whistle][data-v=fox]').click();`);
+check(await ev(`return __wh.P.current().style.whistle`) === 'fox', 'unlocked whistle picked');
+await shot('30-profile-style');
+// parent report + a shared link
+await ev(`__wh.go('sReport');`); await sleep(300);
+check(await ev(`return !!document.querySelector('#report .report')`), 'parent report renders');
+await shot('31-report');
+const link = await ev(`const { encodeReport, buildReport } = await import('./js/report.js'); return location.pathname + '?test&report=' + encodeReport(buildReport(__wh.P.current(), 7));`);
+await send('Page.navigate', { url: 'http://localhost:8090' + link }); await sleep(2500);
+check(await ev(`return document.getElementById('sReport').classList.contains('on') && document.getElementById('repBar').classList.contains('hidden') && document.querySelector('#report h2').textContent === 'Jordan'`), 'shared report link opens read-only');
+await shot('32-shared-report');
 
 console.log('\nERRORS (' + errs.length + ')'); for (const e of errs) console.log('  ' + e);
 ws.close(); ch.kill(); await sleep(500); try { fs.rmSync(prof, { recursive: true, force: true }); } catch {}

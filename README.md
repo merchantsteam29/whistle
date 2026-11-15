@@ -16,6 +16,7 @@ Point a phone or laptop camera at a kid with a basketball. WHISTLE watches their
 - **Highlight clips** of makes, threes and streaks (MediaRecorder, downloadable).
 - **Coach dashboard:** progress charts per kid. **Voice packs:** Coach, Hype announcer, Strict ref. **Team names and colours.**
 - **Accounts + leaderboards** through the Game Library's sync.js (players/XP/badges sync; daily Handles 30 and Ten Shots boards).
+- **1.4:** 5 new drills (weak hand, crossovers, between the legs, layup lines, defensive slides), daily challenge + day streaks, Beat the Pro ghost bars, practice plans, instant replay, shot chart, team mode with printable reports, shareable parent reports, a second-phone scoreboard (PeerJS), arena mode, unlockable themes/whistles/celebrations, offline download and battery saver.
 - **Ref a recorded video:** in setup, run a phone clip through the ref instead of the live camera.
 
 Each call blows a whistle, says the call out loud, shows the ref signal and gives a coaching tip. **No call** waves off a wrong call, and **Fix shot** flips a make or miss.
@@ -39,6 +40,12 @@ node serve.js        # http://localhost:8090  (the camera needs localhost or htt
 | `js/voice.js` | Ref voice packs |
 | `js/highlights.js` | Highlight clip recorder |
 | `js/dashboard.js` | Coach dashboard charts |
+| `js/drills.js` | New drills, daily challenge, pro targets, practice plans (pure) |
+| `js/styles.js` | Unlockable themes, whistles, celebrations |
+| `js/replay.js` | Instant replay buffer + player |
+| `js/shotchart.js` | Shot chart |
+| `js/report.js` | Parent / team reports, share links |
+| `js/board.js` | Second-screen scoreboard over PeerJS |
 | `js/game.js` | Game mode with no DOM: player identity (Court), possession, fouls, scoring, free throws |
 | `js/ref.js` | The ref engine, with no DOM. It reads the pose and ball and emits `dribble / gather / step / shot / shotResult / violation / clean` events. Steps work at any camera angle because a planted foot doesn't move in the picture |
 | `js/progress.js` | Players, XP, levels, badges and bests (localStorage `whistle.v1`) |
@@ -50,6 +57,8 @@ node serve.js        # http://localhost:8090  (the camera needs localhost or htt
 node tools/test-ref.mjs        # 18 scripted plays through the ref engine (travel, pivot, double dribble, hidden ball, make/miss, jitter)
 node tools/test-form.mjs       # form coach (good form, no legs, no follow-through, low release, flared elbow)
 node tools/test-turns.mjs      # HORSE / PIG / Knockout rules
+node tools/test-drills.mjs     # drill counters, slides, daily challenge + streaks
+node tools/test-board.mjs      # two browsers: ref + second-screen scoreboard over PeerJS (needs internet)
 node tools/test-game.mjs       # 19 game-mode checks (fouls, same-depth rule, 2s/3s, free throws, bonus, foul-out, identity)
 node tools/clip.mjs <id> [rate] [--hoop=x1,y1,x2,y2] [--slow=4] [--trace --span=a,b]   # a real video through the whole app: calls, plus a per-frame trace
 node serve.js & node tools/smoke.mjs [--mobile]   # headless Chrome with a fake camera, screenshots in tools/shots/

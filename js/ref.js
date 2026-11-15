@@ -272,7 +272,10 @@ export class Ref {
           let bi = -1, bd = 1e9; body.hands.forEach((h, i) => { if (h && Math.abs(h.X - B.X) < bd) { bd = Math.abs(h.X - B.X); bi = i; } });
           if (bi >= 0 && bd < 0.8 * S) this.dribbleHand = bi;
           if (this.outside(B.X, this.descMaxY, 0)) { this.call('out', 'The ball bounced out'); return; }
-          this.bounce(t, 'ball');
+          // between the legs: the bounce lands between the two feet
+          const fl = this.feet[0].p, fr = this.feet[1].p;
+          const legs = !!(fl && fr && B.X > Math.min(fl.X, fr.X) + 0.03 * S && B.X < Math.max(fl.X, fr.X) - 0.03 * S && Math.abs(fl.X - fr.X) > 0.35 * S);
+          this.bounce(t, 'ball', legs);
         }
       }
     }
@@ -290,7 +293,7 @@ export class Ref {
 
   // a dribble seen two ways: the ball bouncing ('ball') or the dribbling hand pumping ('hand', used
   // when the ball is hidden or blurred). One dribble seen both ways within 0.3 s counts once.
-  bounce(t, src = 'ball') {
+  bounce(t, src = 'ball', legs = false) {
     const L = this.lastDr;
     // the same bounce seen the other way (hand vs ball): within 70% of this player's dribble pace
     const win = Math.min(0.4, 0.7 * (this.drPeriod || 0.5));
@@ -307,7 +310,7 @@ export class Ref {
     if (L && t - L.t < 1.2) this.drPeriod = (this.drPeriod || 0.5) * 0.6 + (t - L.t) * 0.4;
     this.hasDribbled = true; this.dribbling = true; this.lastBounceT = t; this.lastDr = { t, src };
     this.streak++; this.totalDribbles++;
-    this.ev.push({ type: 'dribble', streak: this.streak, total: this.totalDribbles, src });
+    this.ev.push({ type: 'dribble', streak: this.streak, total: this.totalDribbles, src, hand: this.dribbleHand ?? null, legs });
   }
 
   // the dribbling hand going down and back up, mostly vertically, between the shoulders and the knees

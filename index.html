@@ -306,6 +306,79 @@
   .formcard .row4 i { display: block; height: 6px; border-radius: 3px; background: #2a3a58; margin-bottom: 4px; overflow: hidden; }
   .formcard .row4 i u { display: block; height: 100%; background: var(--green); }
   .formcard p { margin: 0; font-size: 13px; color: #c8d3e6; }
+
+  /* --- 1.4 --- */
+  .mgroup { font: 700 11px var(--display); letter-spacing: .2em; color: var(--faint); text-transform: uppercase; margin: 6px 0 -2px; }
+  .drillgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .drillgrid .mode { padding: 9px 10px; gap: 8px; }
+  .drillgrid .mode b { font-size: 16px; }
+  .drillgrid .mode .ic { width: 30px; height: 30px; }
+  .drillgrid .mode .pb em { font-size: 16px; }
+  .daily { display: flex; gap: 12px; align-items: center; border: 1px solid #5a3a12; background: linear-gradient(90deg, #2a1a08, var(--panel)); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .daily .fl { font-size: 26px; }
+  .daily b { display: block; font: 700 18px var(--display); letter-spacing: .04em; }
+  .daily span { color: var(--dim); font-size: 13px; }
+  .daily.done { border-color: var(--green); background: linear-gradient(90deg, #0d2a1d, var(--panel)); }
+  .ghost { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); z-index: 3; width: min(420px, calc(100% - 24px)); background: rgba(8,13,24,.9); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; display: grid; gap: 5px; }
+  .ghost div { display: grid; grid-template-columns: 52px 1fr 34px; gap: 8px; align-items: center; font: 700 12px var(--display); letter-spacing: .12em; color: var(--dim); }
+  .ghost i { height: 10px; border-radius: 5px; background: #1b2840; overflow: hidden; display: block; }
+  .ghost u { display: block; height: 100%; border-radius: 5px; transition: width .2s; }
+  .ghost b { color: var(--text); text-align: right; font-size: 15px; }
+  .nextup { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(5,8,15,.88); text-align: center; }
+  .nextup .k { font: 700 14px var(--display); letter-spacing: .24em; color: var(--dim); text-transform: uppercase; }
+  .nextup h2 { font: 800 56px/1 var(--display); margin: 8px 0; letter-spacing: .04em; }
+  .nextup .n { font: 800 90px/1 var(--display); color: var(--orange); }
+  .nextup p { color: var(--dim); max-width: 420px; margin: 8px auto 16px; }
+  .replay { position: fixed; inset: 0; z-index: 30; background: #000; display: flex; flex-direction: column; }
+  .replay canvas { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+  .rp-top { display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; background: #0a111f; }
+  .rp-top b { font: 800 20px var(--display); letter-spacing: .12em; color: var(--orange); }
+  .rp-top span { color: var(--dim); font-weight: 600; }
+  .rp-bar { display: flex; gap: 8px; align-items: center; padding: 10px 14px max(10px, env(safe-area-inset-bottom)); background: #0a111f; }
+  .rp-bar input { flex: 1; accent-color: var(--orange); }
+  .shotchart { width: 100%; height: auto; display: block; border-radius: 8px; }
+  .zones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; text-align: center; }
+  .zones b { display: block; font: 800 24px var(--display); }
+  .zones span { color: var(--dim); font-size: 12px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dim); margin: 8px 0 0; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .report .rp-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+  .report h2 { font: 800 34px/1 var(--display); margin: 0; letter-spacing: .04em; }
+  .report .rp-head p { margin: 4px 0 0; color: var(--dim); }
+  .report .rp-date { font-size: 12px; }
+  .stylegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .stylegrid button { text-align: left; border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; padding: 9px 10px; }
+  .stylegrid button.on { border-color: var(--orange); background: #22190f; }
+  .stylegrid button:disabled { opacity: .45; cursor: not-allowed; }
+  .stylegrid b { display: block; font: 700 15px var(--display); letter-spacing: .04em; }
+  .stylegrid span { font-size: 11px; color: var(--dim); }
+  .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 8px 0; }
+  .checks label { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel2); }
+  .checks input { accent-color: var(--orange); width: 18px; height: 18px; }
+  #sBoardView { background: #05080f; }
+  .bv { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 20px; text-align: center; }
+  .bv .title { font: 700 18px var(--display); letter-spacing: .3em; color: var(--dim); text-transform: uppercase; }
+  .bv .tiles { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .bv .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 26px; min-width: 150px; }
+  .bv .tile b { display: block; font: 800 clamp(48px, 11vw, 120px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .bv .tile span { font: 700 14px var(--display); letter-spacing: .2em; color: var(--dim); text-transform: uppercase; }
+  .bv .teams { display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap; justify-content: center; }
+  .bv .team { border-radius: 18px; padding: 16px 30px; background: var(--panel); border-top: 8px solid; min-width: 220px; }
+  .bv .team b { display: block; font: 800 clamp(80px, 18vw, 200px)/1 var(--display); }
+  .bv .team span { font: 700 20px var(--display); letter-spacing: .14em; text-transform: uppercase; }
+  .bv .team small { display: block; color: var(--dim); font: 600 14px var(--body); }
+  .bv .callbig { font: 800 clamp(40px, 9vw, 110px)/1 var(--display); padding: 12px 30px; border-radius: 14px; background: var(--red); color: #fff; }
+  .bv .callbig.good { background: var(--green); color: #04140c; } .bv .callbig.info { background: var(--orange); color: #1a0d02; }
+  #printArea { display: none; }
+  @media print {
+    body { overflow: visible !important; background: #fff; }
+    body > *:not(#printArea) { display: none !important; }
+    #printArea { display: block; color: #000; }
+    #printArea .page { page-break-after: always; padding: 10mm; }
+    #printArea .card, #printArea .stat { background: #fff !important; border: 1px solid #999 !important; color: #000; }
+    #printArea .stat span, #printArea .label, #printArea p { color: #333 !important; }
+    #printArea .jersey { color: #000; border: 2px solid #000; }
+  }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 </style>
 </head>
@@ -326,6 +399,7 @@
       </div>
       <div class="card">
         <p class="label">Session</p>
+        <div id="daily"></div>
         <div class="modes" id="modes"></div>
       </div>
     </div>
@@ -335,6 +409,7 @@
     <div class="home-foot">
       <button class="btn" data-go="sProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Stats &amp; badges</button>
       <button class="btn" data-go="sDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Coach dashboard</button>
+      <button class="btn" data-go="sReport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>Parent report</button>
       <button class="btn" id="btnBoards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/></svg>Leaderboards</button>
       <button class="btn" id="btnSync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18z"/></svg>Sync</button>
       <button class="btn" data-go="sHelp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>How it works</button>
@@ -352,7 +427,7 @@
 
   <div class="scoreboard hidden" id="scoreboard">
     <div class="sb" id="sbClockWrap"><b id="sbClock">0:00</b><span id="sbClockLbl">Time</span></div>
-    <div class="sb"><b id="sbDribbles">0</b><span>Dribbles</span></div>
+    <div class="sb"><b id="sbDribbles">0</b><span id="sbDrLbl">Dribbles</span></div>
     <div class="sb hot"><b id="sbStreak">0</b><span>Streak</span></div>
     <div class="sb"><b id="sbFG">0/0</b><span>FG</span></div>
     <div class="sb"><b id="sbXP">0</b><span>XP</span></div>
@@ -367,6 +442,8 @@
   <div class="turnboard hidden" id="turnBoard"></div>
   <div class="turnbanner hidden" id="turnBanner"></div>
   <div class="formcard hidden" id="formCard"></div>
+  <div class="ghost hidden" id="ghost"></div>
+  <div class="nextup hidden" id="nextUp"></div>
   <div class="refpad hidden" id="refPad">
     <b>Home</b><button class="btn sm" data-pts="0,1">+1</button><button class="btn sm" data-pts="0,2">+2</button><button class="btn sm" data-pts="0,3">+3</button><button class="btn sm" data-foul="0">Foul</button>
     <b>Away</b><button class="btn sm" data-pts="1,1">+1</button><button class="btn sm" data-pts="1,2">+2</button><button class="btn sm" data-pts="1,3">+3</button><button class="btn sm" data-foul="1">Foul</button>
@@ -406,6 +483,8 @@
     <button class="btn" id="cFlip" title="Switch camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/></svg><span class="t">Camera</span></button>
     <button class="btn hidden" id="cPause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="t" id="cPauseT">Pause</span></button>
     <div class="sp"></div>
+    <button class="btn hidden" id="cReplay" title="Replay the last few seconds in slow motion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M10 9l5 3-5 3z"/></svg><span class="t">Replay</span></button>
+    <button class="btn hidden" id="cBoard" title="Show the scoreboard on a second phone or tablet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8M7 10h3M14 10h3"/></svg><span class="t">Scoreboard</span></button>
     <button class="btn hidden" id="cWave" title="Wave off the last call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="t">No call</span></button>
     <button class="btn hidden" id="cFix" title="Flip the last shot between made and missed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg><span class="t" id="cFixT">Fix shot</span></button>
     <button class="btn hidden" id="cRef" title="Score and fouls by hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="14" r="6"/><path d="M13 10h8v4h-4M6 5 4 2"/></svg><span class="t">Ref</span></button>
@@ -435,6 +514,18 @@
   </div>
 </section>
 
+<!-- ================= PARENT REPORT ================= -->
+<section id="sReport" class="screen">
+  <div class="wrap" style="max-width:900px">
+    <div class="top"><button class="btn" data-go="sHome" id="repBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>Parent report</h2></div>
+    <div class="dash-bar" id="repBar"><select id="repWho"></select><div class="seg" id="repDays"><button data-d="7">7 days</button><button data-d="30">30 days</button></div><span style="flex:1"></span><button class="btn sm" id="repShare">Share link</button><button class="btn sm" id="repPrint">Print</button></div>
+    <div id="report" style="margin-top:14px"></div>
+  </div>
+</section>
+
+<!-- ================= SECOND-SCREEN SCOREBOARD ================= -->
+<section id="sBoardView" class="screen"><div class="bv" id="bv"><div class="title">WHISTLE scoreboard</div><p style="color:var(--dim)" id="bvStatus">Connecting…</p></div></section>
+
 <!-- ================= SETTINGS ================= -->
 <section id="sSettings" class="screen">
   <div class="wrap" style="max-width:680px">
@@ -445,6 +536,11 @@
       <div class="field"><div><b>Shooting form coach</b><span>Scores every shot out of 10 (legs, elbow, release, follow-through) with a tip</span></div><label class="sw"><input type="checkbox" id="setForm"><i></i></label></div>
       <div class="field"><div><b>Steps after a pick-up</b><span>Real rules allow 2. Beginner allows 3 for younger kids.</span></div>
         <select id="setSteps"><option value="2">2 · Standard</option><option value="3">3 · Beginner</option></select></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Fun</p>
+      <div class="field"><div><b>Arena mode</b><span>Crowd noise that cheers big plays, a buzzer, and player introductions in games</span></div><label class="sw"><input type="checkbox" id="setArena"><i></i></label></div>
+      <div class="field"><div><b>Beat the Pro</b><span>A ghost bar to race in timed drills</span></div><select id="setGhost"><option value="pro">Race the pro</option><option value="best">Race my best</option><option value="off">Off</option></select></div>
     </div>
     <div class="card" style="margin-top:14px">
       <p class="label">Ref voice</p>
@@ -465,6 +561,8 @@
       <div class="field"><div><b>Tracking view</b><span>Shows what WHISTLE ignores (red: background spots) and where the AI looked. Handy when a call seems wrong.</span></div><label class="sw"><input type="checkbox" id="setTrack"><i></i></label></div>
       <div class="field"><div><b>Show skeleton</b><span>Draws the tracked body and ball on the video</span></div><label class="sw"><input type="checkbox" id="setSkeleton"><i></i></label></div>
       <div class="field"><div><b>Mirror front camera</b><span>Like a mirror, so moving left looks left</span></div><label class="sw"><input type="checkbox" id="setMirror"><i></i></label></div>
+      <div class="field"><div><b>Battery saver</b><span>Tracks fewer frames, a smaller camera picture and no replay. It also pauses when nobody has been in view for a minute.</span></div><label class="sw"><input type="checkbox" id="setSaver"><i></i></label></div>
+      <div class="field"><div><b>Play offline</b><span id="offTxt">Download the tracking files once so WHISTLE works with no internet.</span></div><button class="btn sm" id="offBtn">Download</button></div>
       <div class="field"><div><b>Ball colour</b><span id="setBallTxt">Standard orange</span></div><button class="btn sm" id="setBallReset">Reset</button></div>
     </div>
   </div>
@@ -502,6 +600,14 @@
       <p>2 to 4 kids, one shooter in front of the camera at a time. In <b>HORSE</b>, make a shot and everyone has to copy it from the yellow spot; miss the copy and you get a letter. In <b>Knockout</b>, everyone shoots each round, and a miss when someone else made it knocks you out.</p>
       <h3>Highlights, dashboard and accounts</h3>
       <p>Makes, threes and 25-dribble streaks are saved as short clips with the WHISTLE overlay, and you can download them at the end of a session. The <b>Coach dashboard</b> shows each kid's progress over weeks. <b>Sync</b> uses your Game Library account so players, XP and badges follow you to other devices, and <b>Leaderboards</b> show today's best Handles 30 and Ten Shots scores.</p>
+      <h3>Drills, challenges and plans</h3>
+      <p><b>Drills:</b> Handles 30, Ten Shots, Weak Hand 30, Crossovers 30, Between the Legs, Layup Lines and Defensive Slides, each with a personal best. <b>Beat the Pro</b> shows a ghost bar to race (the pro's score or your own best). <b>Today's challenge</b> is the same for everyone each day; finish it to keep your day streak going. <b>Practice plans</b> run a whole practice for you: stations, a rest countdown and voice cues.</p>
+      <h3>Team mode and reports</h3>
+      <p><b>Team mode</b> runs a drill for a whole group: each kid gets a turn, their own XP, and a results table at the end with printable reports. The <b>Parent report</b> sums up a kid's last 7 or 30 days. Share it as a link (the numbers travel inside the link, nothing is uploaded) or print it.</p>
+      <h3>Replay, scoreboard screen and arena</h3>
+      <p><b>Replay</b> plays the last few seconds in slow motion with the skeleton drawn on. <b>Scoreboard</b> turns a second phone or tablet into a big scoreboard: open the link it shows on the other device. <b>Arena mode</b> (Settings) adds a crowd, a buzzer and player introductions. Level up to unlock new scoreboard themes, whistles and celebrations on the Stats page.</p>
+      <h3>Offline and battery</h3>
+      <p>Settings → <b>Play offline</b> downloads the tracking files once so WHISTLE works without internet. <b>Battery saver</b> tracks fewer frames, turns off replay and pauses when nobody's in view for a minute.</p>
       <h3>Game mode (1v1 / 2v2)</h3>
       <p>Everyone plays in front of one camera. HOME starts on the left, AWAY on the right, and WHISTLE keeps track of who is who (shirt colours help). Mark the hoop and the 3-point line in setup for automatic 2s and 3s.</p>
       <div class="sig">
@@ -545,6 +651,27 @@
   </div>
 </div>
 
+<!-- practice plan picker -->
+<div class="modal" id="mPlan">
+  <div class="card" style="width:min(520px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Practice plans</h2><button class="btn sm" id="mPlanClose">Cancel</button></div>
+    <div class="modes" id="planList"></div>
+  </div>
+</div>
+
+<!-- team mode setup -->
+<div class="modal" id="mTeam">
+  <div class="card" style="width:min(560px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Team mode</h2><button class="btn sm" id="mTeamClose">Cancel</button></div>
+    <p style="color:var(--dim);margin-top:0">Pick who's here. Each player takes a turn on the drill and everyone gets their own XP and stats.</p>
+    <div class="checks" id="teamKids"></div>
+    <button class="btn sm ghost" id="teamAdd" style="margin-bottom:8px">+ New player</button>
+    <div class="field"><div><b>Drill</b></div><select id="teamDrill"></select></div>
+    <div class="field"><div><b>Rounds</b><span>Turns per player</span></div><div class="seg" id="teamRounds"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+    <button class="btn primary big" id="teamGo" style="margin-top:12px">Start</button>
+  </div>
+</div>
+
 <!-- HORSE / Knockout setup -->
 <div class="modal" id="mTurns">
   <div class="card" style="width:min(500px,100%)">
@@ -567,6 +694,7 @@
   </div>
 </div>
 
+<div id="printArea"></div>
 <script src="install.js"></script>
 <script src="sync.js"></script>
 <script type="module" src="js/main.js"></script>
