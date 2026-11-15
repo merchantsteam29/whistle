@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WHISTLE · Basketball Ref & Coach</title>
+<meta name="description" content="A basketball ref and coach for kids. Point a camera at a player: it counts dribbles, calls traveling and double dribbles, tracks makes, and awards XP, levels and badges.">
+<meta name="theme-color" content="#0a111f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a111f; --panel: #111b2e; --panel2: #16233b; --line: #233452; --text: #eef3fb; --dim: #8a9bb8; --faint: #5b6c8a;
+    --orange: #ff7a1a; --orange2: #ff9a4d; --red: #ff4655; --green: #22c983; --blue: #3d9bff; --gold: #ffc53d;
+    --display: 'Barlow Condensed', 'Arial Narrow', sans-serif; --body: Inter, system-ui, sans-serif;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.45 var(--body); -webkit-tap-highlight-color: transparent; }
+  body { overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .screen { display: none; position: fixed; inset: 0; overflow-y: auto; }
+  .screen.on { display: block; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px 40px; }
+  .hidden { display: none !important; }
+
+  /* --- buttons --- */
+  .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; padding: 10px 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: transform .08s, background .15s, border-color .15s; }
+  .btn:hover { border-color: #34507c; background: #1b2b48; }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--orange); border-color: var(--orange); color: #1a0d02; }
+  .btn.primary:hover { background: var(--orange2); }
+  .btn.big { font: 800 26px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 18px 28px; width: 100%; border-radius: 12px; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--red); }
+  .btn.sm { padding: 6px 12px; font-size: 13px; }
+  .btn svg { width: 18px; height: 18px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > .btn { flex: 1 1 auto; }
+
+  /* --- brand --- */
+  .brand { display: flex; align-items: center; gap: 14px; margin: 6px 0 22px; }
+  .brand .mark { width: 52px; height: 52px; border-radius: 12px; background: var(--orange); display: grid; place-items: center; flex: none; }
+  .brand .mark svg { width: 32px; height: 32px; }
+  .brand h1 { font: 800 40px/0.9 var(--display); letter-spacing: .08em; margin: 0; }
+  .brand p { margin: 2px 0 0; color: var(--dim); font: 600 14px var(--display); letter-spacing: .18em; text-transform: uppercase; }
+
+  .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
+  .label { font: 700 12px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); margin: 0 0 10px; }
+
+  /* player card */
+  .pc { display: flex; gap: 14px; align-items: center; }
+  .jersey { width: 64px; height: 64px; border-radius: 12px; display: grid; place-items: center; font: 800 32px/1 var(--display); color: #0a111f; flex: none; position: relative; }
+  .jersey small { position: absolute; bottom: 4px; font: 700 9px var(--display); letter-spacing: .1em; opacity: .7; }
+  .pc .who { flex: 1; min-width: 0; }
+  .pc .name { font: 700 26px/1 var(--display); letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc .lvl { color: var(--orange); font: 700 14px var(--display); letter-spacing: .14em; text-transform: uppercase; margin-top: 4px; }
+  .bar { height: 8px; background: #0b1424; border-radius: 99px; overflow: hidden; margin-top: 8px; border: 1px solid var(--line); }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), var(--gold)); border-radius: 99px; width: 0; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+  .xpline { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; margin-top: 5px; }
+  .pc-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .empty-player { text-align: center; padding: 10px 0; color: var(--dim); }
+
+  /* modes */
+  .modes { display: grid; gap: 10px; }
+  .mode { text-align: left; border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 12px 14px; display: flex; gap: 12px; align-items: center; }
+  .mode .ic { width: 40px; height: 40px; border-radius: 10px; background: #0b1424; display: grid; place-items: center; flex: none; color: var(--dim); }
+  .mode .ic svg { width: 22px; height: 22px; }
+  .mode b { font: 700 20px/1 var(--display); letter-spacing: .04em; display: block; }
+  .mode span { color: var(--dim); font-size: 13px; }
+  .mode .pb { margin-left: auto; text-align: right; font: 700 12px var(--display); letter-spacing: .12em; color: var(--faint); white-space: nowrap; }
+  .mode .pb em { display: block; font-style: normal; font-size: 22px; color: var(--text); letter-spacing: 0; }
+  .mode.sel { border-color: var(--orange); background: #22190f; }
+  .mode.sel .ic { background: var(--orange); color: #1a0d02; }
+  .home-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .home-foot .btn { flex: 1 1 140px; }
+  .privacy { color: var(--faint); font-size: 12px; margin-top: 16px; text-align: center; }
+
+  /* --- page headers --- */
+  .top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .top h2 { font: 800 30px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; margin: 0; flex: 1; }
+
+  /* --- session --- */
+  #sSession { background: #000; overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; overflow: hidden; background: #05080f; }
+  #stage video, #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #stage.mirror video, #stage.mirror canvas { transform: scaleX(-1); }
+  #stage canvas { pointer-events: none; }
+
+  .scoreboard { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; background: rgba(8,13,24,.9); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; backdrop-filter: blur(8px); z-index: 3; max-width: calc(100% - 20px); }
+  .sb { padding: 6px 16px 7px; text-align: center; border-right: 1px solid var(--line); min-width: 78px; }
+  .sb:last-child { border-right: 0; }
+  .sb b { display: block; font: 800 34px/1 var(--display); font-variant-numeric: tabular-nums; }
+  .sb span { font: 700 10px var(--display); letter-spacing: .2em; color: var(--dim); text-transform: uppercase; }
+  .sb.hot b { color: var(--orange); }
+  .sb.clock b { color: var(--gold); }
+  @media (max-width: 600px) { .sb { padding: 5px 9px; min-width: 54px; } .sb b { font-size: 24px; } .sb span { font-size: 8px; letter-spacing: .12em; } }
+
+  .poss { position: absolute; left: 12px; bottom: max(76px, calc(env(safe-area-inset-bottom) + 66px)); z-index: 3; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .pill { background: rgba(8,13,24,.88); border: 1px solid var(--line); border-radius: 99px; padding: 6px 14px; font: 700 15px var(--display); letter-spacing: .14em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+  .pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+  .pill.live i { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .pill.hold i { background: var(--gold); }
+  .pill.air i { background: var(--blue); }
+  .pill.dead i { background: var(--red); }
+  .feet { display: flex; gap: 4px; }
+  .feet u { text-decoration: none; width: 26px; height: 8px; border-radius: 4px; background: #2a3a58; }
+  .feet u.on { background: var(--gold); }
+  .feet u.over { background: var(--red); }
+  .track { font: 600 11px var(--body); color: var(--dim); letter-spacing: 0; text-transform: none; }
+
+  .call { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%) scale(.9); z-index: 4; text-align: center; pointer-events: none; opacity: 0; transition: opacity .15s, transform .25s cubic-bezier(.2,1.4,.3,1); width: min(92%, 640px); }
+  .call.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .call .tag { display: inline-block; font: 800 clamp(40px, 9vw, 92px)/0.95 var(--display); letter-spacing: .04em; padding: 10px 28px 12px; border-radius: 10px; background: var(--red); color: #fff; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+  .call.good .tag { background: var(--green); color: #04140c; }
+  .call.info .tag { background: var(--orange); color: #1a0d02; }
+  .call .sub { margin-top: 10px; display: inline-block; background: rgba(8,13,24,.92); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-weight: 600; }
+  .call .sub em { display: block; font-style: normal; color: var(--dim); font-weight: 500; font-size: 13px; margin-top: 2px; }
+
+  .toast { position: absolute; right: 12px; top: 90px; z-index: 3; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; pointer-events: none; }
+  .toast div { background: rgba(8,13,24,.9); border: 1px solid var(--line); border-left: 3px solid var(--orange); border-radius: 8px; padding: 6px 12px; font: 700 16px var(--display); letter-spacing: .06em; animation: tin 2.2s forwards; }
+  .toast div.g { border-left-color: var(--green); }
+  @keyframes tin { 0% { opacity: 0; transform: translateX(20px); } 10% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+  .controls { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); display: flex; gap: 8px; z-index: 3; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+  .controls .btn { background: rgba(17,27,46,.92); }
+  .controls .sp { flex: 1; }
+  .controls .btn.end { background: var(--red); border-color: var(--red); color: #fff; }
+  @media (max-width: 600px) { .controls .btn .t { display: none; } }
+
+  .ask { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; gap: 8px; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .ask b { font: 700 18px var(--display); letter-spacing: .06em; margin-right: 6px; }
+
+  /* setup panel */
+  .setup { position: absolute; left: 12px; top: 12px; z-index: 4; width: min(360px, calc(100% - 24px)); background: rgba(10,17,31,.94); border: 1px solid var(--line); border-radius: 14px; padding: 16px; backdrop-filter: blur(8px); }
+  .setup h3 { font: 800 24px/1 var(--display); letter-spacing: .06em; margin: 0 0 12px; text-transform: uppercase; }
+  .chk { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); align-items: flex-start; }
+  .chk .dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--faint); flex: none; display: grid; place-items: center; font: 800 13px var(--display); color: var(--faint); margin-top: 1px; }
+  .chk.ok .dot { background: var(--green); border-color: var(--green); color: #04140c; }
+  .chk.act .dot { border-color: var(--orange); color: var(--orange); }
+  .chk b { display: block; font-weight: 600; }
+  .chk span { color: var(--dim); font-size: 13px; }
+  .chk .row { margin-top: 8px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; margin-right: 4px; border: 1px solid #fff4; }
+  .setup { max-height: calc(100% - 88px); overflow-y: auto; }
+  .setup .go { margin-top: 12px; position: sticky; bottom: -16px; box-shadow: 0 0 0 16px #0b1220; }
+  @media (max-height: 520px) {
+    .setup { padding: 10px 12px; top: 8px; left: 8px; width: min(320px, calc(100% - 16px)); }
+    .setup h3 { font-size: 18px; margin-bottom: 4px; }
+    .chk { padding: 6px 0; } .chk span { font-size: 12px; line-height: 1.35; } .chk .row { margin-top: 5px; }
+    .setup .btn.big { font-size: 20px; padding: 10px; margin-top: 8px; bottom: -10px; box-shadow: 0 0 0 10px #0b1220; }
+  }
+  .setup.mini { width: auto; padding: 10px 14px; }
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: rgba(5,8,15,.85); text-align: center; }
+  .loading b { font: 800 30px var(--display); letter-spacing: .1em; display: block; }
+  .loading span { color: var(--dim); }
+  .spin { width: 38px; height: 38px; border: 4px solid var(--line); border-top-color: var(--orange); border-radius: 50%; margin: 0 auto 14px; animation: sp 0.8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .count { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; pointer-events: none; font: 800 180px/1 var(--display); color: var(--orange); text-shadow: 0 8px 40px rgba(0,0,0,.6); }
+
+  /* --- summary --- */
+  .sumhead { text-align: center; margin: 10px 0 20px; }
+  .sumhead .k { font: 700 14px var(--display); letter-spacing: .24em; color: var(--dim); text-transform: uppercase; }
+  .sumhead h2 { font: 800 52px/1 var(--display); letter-spacing: .04em; margin: 4px 0; text-transform: uppercase; }
+  .sumhead .xp { font: 800 34px var(--display); color: var(--orange); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font: 800 34px/1 var(--display); font-variant-numeric: tabular-nums; }
+  .stat span { font: 700 11px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  .stat.bad b { color: var(--red); }
+  .xprows { display: grid; gap: 6px; }
+  .xprow { display: flex; justify-content: space-between; color: var(--dim); }
+  .xprow b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .lvlup { text-align: center; padding: 14px; border: 1px solid var(--gold); border-radius: 12px; background: #231d0c; color: var(--gold); font: 800 26px var(--display); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
+  .pbflag { display: inline-block; background: var(--gold); color: #241a00; font: 800 13px var(--display); letter-spacing: .14em; padding: 3px 10px; border-radius: 6px; margin-left: 8px; vertical-align: middle; }
+  .tips li { margin-bottom: 6px; }
+
+  /* badges */
+  .badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .badge { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel2); display: flex; gap: 10px; align-items: center; }
+  .badge .bi { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #0b1424; color: var(--faint); flex: none; border: 2px solid var(--line); }
+  .badge .bi svg { width: 20px; height: 20px; }
+  .badge b { display: block; font: 700 16px/1.1 var(--display); letter-spacing: .03em; }
+  .badge span { color: var(--dim); font-size: 12px; line-height: 1.3; display: block; }
+  .badge.locked { opacity: .5; }
+  .badge.got .bi { background: var(--orange); color: #1a0d02; border-color: var(--gold); }
+  .badge.new { border-color: var(--gold); }
+
+  table.hist { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .hist th { text-align: left; font: 700 11px var(--display); letter-spacing: .16em; color: var(--dim); text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .hist td { padding: 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .scroll-x { overflow-x: auto; }
+
+  /* forms / settings */
+  .field { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .field:first-of-type { border-top: 0; }
+  .field b { display: block; font-weight: 600; }
+  .field span { color: var(--dim); font-size: 13px; }
+  select, input[type=text], input[type=number] { background: #0b1424; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  input[type=range] { accent-color: var(--orange); width: 150px; }
+  .sw { position: relative; width: 46px; height: 26px; flex: none; }
+  .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .sw i { position: absolute; inset: 0; background: #2a3a58; border-radius: 99px; transition: .15s; }
+  .sw i::after { content: ''; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: .15s; }
+  .sw input:checked + i { background: var(--orange); }
+  .sw input:checked + i::after { left: 23px; }
+  .sw input:focus-visible + i { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  .modal { position: fixed; inset: 0; background: rgba(3,6,12,.75); display: none; place-items: center; z-index: 20; padding: 16px; }
+  .modal.on { display: grid; }
+  .modal .card { width: min(440px, 100%); max-height: 90vh; overflow-y: auto; }
+  .plist { display: grid; gap: 8px; margin-bottom: 14px; }
+  .pitem { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--panel2); text-align: left; width: 100%; }
+  .pitem.sel { border-color: var(--orange); }
+  .pitem .jersey { width: 40px; height: 40px; font-size: 20px; border-radius: 8px; }
+  .pitem b { font: 700 18px var(--display); letter-spacing: .03em; }
+  .pitem span { color: var(--dim); font-size: 12px; display: block; }
+  .newp { display: flex; gap: 8px; }
+  .newp input[type=text] { flex: 1; min-width: 0; }
+  .newp input[type=number] { width: 70px; }
+
+  .help h3 { font: 800 22px var(--display); letter-spacing: .06em; text-transform: uppercase; margin: 22px 0 8px; }
+  .help p, .help li { color: #c8d3e6; }
+  .help .sig { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .help .sig { grid-template-columns: 1fr; } }
+  kbd { background: #0b1424; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ================= HOME ================= -->
+<section id="sHome" class="screen on">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 32 32" fill="none" stroke="#1a0d02" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="19" r="7"/><path d="M17 14h11v6h-6"/><path d="M8 9 5 5"/><circle cx="12" cy="19" r="2" fill="#1a0d02"/></svg></div>
+      <div><h1>WHISTLE</h1><p>Basketball Ref &amp; Coach</p></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <p class="label">Player</p>
+        <div id="playerCard"></div>
+      </div>
+      <div class="card">
+        <p class="label">Session</p>
+        <div class="modes" id="modes"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px"><button class="btn primary big" id="btnStart">Start session</button></div>
+
+    <div class="home-foot">
+      <button class="btn" data-go="sProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Stats &amp; badges</button>
+      <button class="btn" data-go="sHelp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>How it works</button>
+      <button class="btn" data-go="sSettings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 10h.1a2 2 0 1 1 0 4z"/></svg>Settings</button>
+      <button class="btn" id="installApp" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>Install app</button>
+      <button class="btn" id="pcDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Download for PC</button>
+    </div>
+    <p class="privacy">The camera video stays on this device. Nothing is recorded or uploaded.</p>
+  </div>
+</section>
+
+<!-- ================= SESSION ================= -->
+<section id="sSession" class="screen">
+  <div id="stage"><video id="video" playsinline muted autoplay></video><canvas id="overlay"></canvas></div>
+
+  <div class="scoreboard hidden" id="scoreboard">
+    <div class="sb" id="sbClockWrap"><b id="sbClock">0:00</b><span id="sbClockLbl">Time</span></div>
+    <div class="sb"><b id="sbDribbles">0</b><span>Dribbles</span></div>
+    <div class="sb hot"><b id="sbStreak">0</b><span>Streak</span></div>
+    <div class="sb"><b id="sbFG">0/0</b><span>FG</span></div>
+    <div class="sb"><b id="sbXP">0</b><span>XP</span></div>
+  </div>
+
+  <div class="poss hidden" id="poss">
+    <div class="pill" id="pill"><i></i><span id="pillTxt">Looking for player</span></div>
+    <div class="pill hidden" id="stepsPill"><span id="stepsTxt">Steps</span><div class="feet" id="feet"></div></div>
+    <div class="pill track" id="trackPill"></div>
+  </div>
+
+  <div class="call" id="call"><div class="tag" id="callTag">TRAVELING</div><br><div class="sub" id="callSub"></div></div>
+  <div class="toast" id="toast"></div>
+  <div class="ask hidden" id="ask"><b>Did it go in?</b><button class="btn primary sm" id="askYes">Made it</button><button class="btn sm" id="askNo">Missed</button></div>
+
+  <div class="setup" id="setup">
+    <h3>Set up the court</h3>
+    <div class="chk" id="chkBody"><div class="dot">1</div><div><b>Whole body in view</b><span id="chkBodyTxt">Stand 3 to 5 m from the camera, head to feet in the picture.</span></div></div>
+    <div class="chk" id="chkBall"><div class="dot">2</div><div><b>Tap the ball</b><span id="chkBallTxt">Hold the ball up and tap it on screen so WHISTLE learns its colour.</span>
+      <div class="row"><button class="btn sm" id="ballDefault">Use standard orange</button></div></div></div>
+    <div class="chk" id="chkHoop"><div class="dot">3</div><div><b>Mark the hoop <span style="color:var(--faint)">(optional)</span></b><span id="chkHoopTxt">For auto-scored shots: tap the left edge of the rim, then the right edge.</span>
+      <div class="row"><button class="btn sm" id="hoopMark">Mark hoop</button><button class="btn sm ghost" id="hoopClear">No hoop</button></div></div></div>
+    <button class="btn primary big go" id="btnGo">Tip off</button>
+  </div>
+
+  <div class="loading hidden" id="loading"><div><div class="spin"></div><b id="loadTitle">WARMING UP</b><span id="loadTxt">Starting the camera…</span></div></div>
+  <div class="count hidden" id="count">3</div>
+
+  <div class="controls" id="controls">
+    <button class="btn" id="cBack" title="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg><span class="t">Back</span></button>
+    <button class="btn" id="cFlip" title="Switch camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/></svg><span class="t">Camera</span></button>
+    <button class="btn hidden" id="cPause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span class="t" id="cPauseT">Pause</span></button>
+    <div class="sp"></div>
+    <button class="btn hidden" id="cWave" title="Wave off the last call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="t">No call</span></button>
+    <button class="btn hidden" id="cFix" title="Flip the last shot between made and missed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg><span class="t" id="cFixT">Fix shot</span></button>
+    <button class="btn hidden" id="cAddShot" title="Count a shot it missed"><span>+ Shot</span></button>
+    <button class="btn end hidden" id="cEnd">End</button>
+  </div>
+</section>
+
+<!-- ================= SUMMARY ================= -->
+<section id="sSummary" class="screen">
+  <div class="wrap" id="summary"></div>
+</section>
+
+<!-- ================= PROFILE ================= -->
+<section id="sProfile" class="screen">
+  <div class="wrap">
+    <div class="top"><button class="btn" data-go="sHome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>Stats &amp; badges</h2></div>
+    <div id="profile"></div>
+  </div>
+</section>
+
+<!-- ================= SETTINGS ================= -->
+<section id="sSettings" class="screen">
+  <div class="wrap" style="max-width:680px">
+    <div class="top"><button class="btn" data-go="sHome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>Settings</h2></div>
+    <div class="card">
+      <p class="label">Rules</p>
+      <div class="field"><div><b>Steps after a pick-up</b><span>Real rules allow 2. Beginner allows 3 for younger kids.</span></div>
+        <select id="setSteps"><option value="2">2 · Standard</option><option value="3">3 · Beginner</option></select></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Sound</p>
+      <div class="field"><div><b>Whistle</b><span>Blows on every call</span></div><label class="sw"><input type="checkbox" id="setWhistle"><i></i></label></div>
+      <div class="field"><div><b>Voice calls</b><span>Says "Traveling", "Bucket", streaks…</span></div><label class="sw"><input type="checkbox" id="setVoice"><i></i></label></div>
+      <div class="field"><div><b>Volume</b></div><input type="range" id="setVolume" min="0" max="1" step="0.05"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Tracking</p>
+      <div class="field"><div><b>Body tracking</b><span>Accurate is better from far away but needs a faster device.</span></div>
+        <select id="setQuality"><option value="fast">Fast</option><option value="accurate">Accurate</option></select></div>
+      <div class="field"><div><b>Ball colour sensitivity</b><span>Raise it if the ball keeps getting lost. Lower it if it tracks shirts or skin.</span></div><input type="range" id="setSens" min="0.6" max="1.8" step="0.05"></div>
+      <div class="field"><div><b>Show skeleton</b><span>Draws the tracked body and ball on the video</span></div><label class="sw"><input type="checkbox" id="setSkeleton"><i></i></label></div>
+      <div class="field"><div><b>Mirror front camera</b><span>Like a mirror, so moving left looks left</span></div><label class="sw"><input type="checkbox" id="setMirror"><i></i></label></div>
+      <div class="field"><div><b>Ball colour</b><span id="setBallTxt">Standard orange</span></div><button class="btn sm" id="setBallReset">Reset</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HELP ================= -->
+<section id="sHelp" class="screen">
+  <div class="wrap help" style="max-width:760px">
+    <div class="top"><button class="btn" data-go="sHome"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg></button><h2>How it works</h2></div>
+    <div class="card">
+      <h3 style="margin-top:0">Setting up</h3>
+      <ol>
+        <li>Prop the phone or laptop up about waist high, <b>3–5 m away</b>, so the player fits head to feet.</li>
+        <li>Good light helps a lot. Avoid a bright window behind the player.</li>
+        <li>One player in view at a time. It follows whoever it sees best.</li>
+        <li>For auto-scored shots, put the camera <b>off to the side</b> so the hoop and the player are both in the picture, then mark the rim.</li>
+        <li>Tap the ball once in setup. It learns that ball's colour. Orange basketballs work best.</li>
+      </ol>
+      <h3>The calls</h3>
+      <div class="sig">
+        <div class="card" style="background:var(--panel2)"><b>TRAVELING</b><p>Too many steps holding the ball. Picked up on the move: 2 steps allowed (3 in Beginner). Picked up standing still: your first step sets the other foot as your <b>pivot</b>. Move the pivot and it's a travel.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>DOUBLE DRIBBLE</b><p>You dribbled, picked the ball up, then started dribbling again. Once you pick it up, pass or shoot.</p></div>
+      </div>
+      <p>A ref can miss a call, and so can a camera. Tap <b>No call</b> to wave off a wrong one. Tap <b>Fix shot</b> to flip the last shot between made and missed.</p>
+      <h3>Points</h3>
+      <ul>
+        <li>+1 XP every dribble, plus bonuses for streaks of 10, 25, 50, 100 and 200 in a row</li>
+        <li>+3 XP for every shot, +15 for a make, +5 extra for each make in a row</li>
+        <li>+4 XP for a clean pick-up: picked up, then passed, shot or dribbled with no violation</li>
+        <li>+25 XP for finishing a drill, +25 more for a new personal best</li>
+        <li>Violations don't take XP away. They end your streak.</li>
+      </ul>
+      <p>Levels go Rookie → Bench → Sixth Man → Starter → Varsity → Captain → All-Conference → All-Star → MVP → Hall of Fame. There are badges to collect on the Stats page.</p>
+      <h3>Privacy</h3>
+      <p>All the tracking runs on this device. The video is never recorded, saved or sent anywhere. Progress is saved in this browser only.</p>
+    </div>
+  </div>
+</section>
+
+<!-- players modal -->
+<div class="modal" id="mPlayers">
+  <div class="card">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:24px">Players</h2><button class="btn sm" id="mPlayersClose">Done</button></div>
+    <div class="plist" id="plist"></div>
+    <p class="label">New player</p>
+    <form class="newp" id="newPlayer"><input type="text" id="npName" placeholder="Name" maxlength="18" required><input type="number" id="npNum" placeholder="#" min="0" max="99"><button class="btn primary" type="submit">Add</button></form>
+  </div>
+</div>
+
+<script src="install.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
