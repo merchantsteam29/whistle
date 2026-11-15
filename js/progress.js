@@ -10,12 +10,14 @@ export const XP = {
   dribble: 1, attempt: 3, make: 15, makeStreak: 5, clean: 4,
   streak: { 10: 5, 25: 15, 50: 30, 100: 60, 200: 100 },
   drillDone: 25, drillBest: 25,
+  game: { point: 5, played: 15, win: 40 },
 };
 
 export const MODES = {
   free: { name: 'Free Play', desc: 'Every call is live. Dribble, shoot, move. No clock.' },
   dribble30: { name: 'Handles 30', desc: 'Most dribbles in 30 seconds. No travels or double dribbles.', secs: 30 },
   shoot10: { name: 'Ten Shots', desc: 'Take 10 shots. Mark the hoop and it scores them for you.', shots: 10 },
+  game: { name: 'Game', desc: '1v1 or 2v2 on one camera: fouls, 2s and 3s, free throws.', game: true },
 };
 
 // badges: test(session, lifetimeStats) -> true when earned
@@ -34,12 +36,15 @@ export const BADGES = [
   { id: 'feet', name: 'Footwork', desc: '20 clean pick-ups (no travel) in a session', icon: 'feet', test: (s) => s.clean >= 20 },
   { id: 'perfect', name: 'Perfect Ten', desc: '10 for 10 in Ten Shots', icon: 'star', test: (s) => s.mode === 'shoot10' && s.makes >= 10 },
   { id: 'quick', name: 'Quick Hands', desc: '60+ dribbles in Handles 30', icon: 'bolt', test: (s) => s.mode === 'dribble30' && s.dribbles >= 60 },
+  { id: 'win', name: 'Winner', desc: 'Win a game', icon: 'trophy', test: (s) => s.mode === 'game' && s.won },
+  { id: 'splash', name: 'Splash', desc: 'Hit a three in a game', icon: 'three', test: (s) => s.mode === 'game' && s.threes >= 1 },
+  { id: 'cleangame', name: 'Lockdown', desc: 'Win a game without a foul', icon: 'shield', test: (s) => s.mode === 'game' && s.won && s.fouls === 0 },
   { id: 'rat', name: 'Gym Rat', desc: 'Finish 10 sessions', icon: 'cal', test: (s, L) => L.sessions >= 10 },
   { id: 'iron', name: 'Iron Player', desc: '60 minutes of practice all-time', icon: 'clock', test: (s, L) => L.seconds >= 3600 },
 ];
 
-const blankStats = () => ({ sessions: 0, seconds: 0, dribbles: 0, bestStreak: 0, makes: 0, shots: 0, travels: 0, doubles: 0, clean: 0 });
-const DEFAULT_SETTINGS = { stepsAllowed: 2, whistle: true, voice: true, volume: 0.8, skeleton: true, sensitivity: 1, quality: 'fast', facing: 'user', mirror: true, ballColor: null, hoop: null };
+const blankStats = () => ({ sessions: 0, seconds: 0, dribbles: 0, bestStreak: 0, makes: 0, shots: 0, travels: 0, doubles: 0, clean: 0, games: 0, wins: 0, points: 0, fouls: 0 });
+const DEFAULT_SETTINGS = { aiBall: false, trackView: false, threeLine: null, gameRules: { format: '1v1', toPoints: 11, foulOut: 5, bonusAt: 5 }, roster: [], stepsAllowed: 2, whistle: true, voice: true, volume: 0.8, skeleton: true, sensitivity: 1, quality: 'fast', facing: 'user', mirror: true, ballColor: null, hoop: null };
 const COLORS = ['#ff7a1a', '#2f8cff', '#19c37d', '#e5484d', '#a259ff', '#ffc53d', '#14b8c4', '#f472b6'];
 
 let data = null;
@@ -83,8 +88,8 @@ export function newSession(mode) {
 export function addXP(s, kind, n) { s.xp += n; s.xpBy[kind] = (s.xpBy[kind] || 0) + n; return n; }
 
 // finish: add the session into the player's lifetime totals, check badges and bests
-export function finish(s) {
-  const p = current(); if (!p) return null;
+export function finish(s, pid) {
+  const p = pid ? load().players.find((q) => q.id === pid) : current(); if (!p) return null;
   const before = levelOf(p.xp);
   const L = p.stats;
   const drill = { isBest: false, score: null, prev: null };
@@ -97,10 +102,11 @@ export function finish(s) {
   }
   L.sessions++; L.seconds += Math.round(s.seconds); L.dribbles += s.dribbles; L.bestStreak = Math.max(L.bestStreak, s.bestStreak);
   L.makes += s.makes; L.shots += s.shots; L.travels += s.travels; L.doubles += s.doubles; L.clean += s.clean;
+  if (s.mode === 'game') { L.games++; if (s.won) L.wins++; L.points += s.points || 0; L.fouls += s.fouls || 0; }
   p.xp += s.xp;
   const earned = [];
   for (const b of BADGES) if (!p.badges[b.id] && b.test(s, L)) { p.badges[b.id] = Date.now(); earned.push(b); }
-  p.history.unshift({ at: s.start, mode: s.mode, seconds: Math.round(s.seconds), dribbles: s.dribbles, bestStreak: s.bestStreak, makes: s.makes, shots: s.shots, travels: s.travels, doubles: s.doubles, xp: s.xp });
+  p.history.unshift({ at: s.start, mode: s.mode, seconds: Math.round(s.seconds), dribbles: s.dribbles, bestStreak: s.bestStreak, makes: s.makes, shots: s.shots, travels: s.travels, doubles: s.doubles, xp: s.xp, ...(s.mode === 'game' ? { score: s.score, won: s.won, points: s.points, fouls: s.fouls } : {}) });
   p.history.length = Math.min(p.history.length, 40);
   save();
   return { player: p, before, after: levelOf(p.xp), earned, drill };

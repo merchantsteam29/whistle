@@ -106,6 +106,33 @@ check(await ev(`return document.getElementById('sSummary').classList.contains('o
 check(await ev(`return __wh.P.current().bests.dribble30`) === 12, 'personal best saved');
 await shot('13-drill-summary');
 
+// game mode: 1v1 with a saved player vs a guest
+await ev(`__wh.go('sHome'); document.querySelector('[data-mode=game]').click(); document.getElementById('btnStart').click();`);
+await sleep(300);
+check(await ev(`return document.getElementById('mGame').classList.contains('on')`), 'Game setup opens');
+await ev(`const sel = document.querySelector('[data-slot="0"]'); sel.value = sel.options[1].value; sel.dispatchEvent(new Event('change')); document.getElementById('gTo').value = '7'; document.getElementById('gTo').dispatchEvent(new Event('change'));`);
+await shot('14-game-setup');
+await ev(`document.getElementById('gGo').click();`);
+for (let i = 0; i < 40; i++) { await sleep(500); if (await ev(`return document.getElementById('loading').classList.contains('hidden')`)) break; }
+check(await ev(`return !document.getElementById('chkThree').classList.contains('hidden')`), 'game setup shows the 3-point line step');
+await shot('15-game-court');
+await ev(`document.getElementById('btnGo').click();`); await sleep(3200);
+check(await ev(`return !!__wh.game && !document.getElementById('gameboard').classList.contains('hidden')`), 'game started with a scoreboard');
+await ev(`__wh.handleGame([{ type: 'possession', who: 0, team: 0, changed: true }]); __wh.handleGame(__wh.game.manualPoints(0, 3));`);
+await sleep(300); await shot('16-game-three');
+await sleep(1500);
+await ev(`__wh.handleGame(__wh.game.manualFoul(1));`);
+await sleep(400); await shot('17-game-foul');
+check(await ev(`return __wh.game.stats[1].pf`) === 1 && await ev(`return __wh.game.teamFouls[1]`) === 1, 'foul counted for Away');
+await ev(`document.getElementById('cWave').click();`);
+check(await ev(`return __wh.game.stats[1].pf`) === 0, 'No call removes the foul');
+await ev(`__wh.handleGame(__wh.game.manualPoints(1, 2)); __wh.handleGame(__wh.game.manualPoints(0, 2)); __wh.handleGame(__wh.game.manualPoints(0, 2));`);
+await sleep(3800);
+check(await ev(`return document.getElementById('sSummary').classList.contains('on')`), 'game to 7 ends itself with a summary');
+await shot('18-game-summary');
+const gp = await ev(`return __wh.P.current().stats`);
+check(gp.games === 1 && gp.wins === 1 && gp.points === 7, `game saved to the player (games ${gp.games}, wins ${gp.wins}, points ${gp.points})`);
+
 console.log('\nERRORS (' + errs.length + ')'); for (const e of errs) console.log('  ' + e);
 ws.close(); ch.kill(); await sleep(500); try { fs.rmSync(prof, { recursive: true, force: true }); } catch {}
 process.exit(errs.length ? 1 : 0);

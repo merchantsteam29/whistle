@@ -49,6 +49,7 @@ export class Ref {
     this.desc = false; this.descMaxY = 0; this.lastBounceT = -9; this.lastHandT = -9;
     this.steps = 0; this.mode = null; this.pivot = null; this.firstFoot = null; this.pivotSlips = 0; this.holdStart = 0;
     this.handBallY = 9; this.releaseT = -9; this.bounceSinceRelease = false; this.saved = null; this.farAcc = 0; this.cleanPending = false;
+    this.lastDr = null; this.hiddenAcc = 0;
   }
 
   setOptions(o) { Object.assign(this.opts, o); }
@@ -101,12 +102,24 @@ export class Ref {
 
     this.updateFeet(body, t, dt, live);
 
-    let near = 0;
-    if (B) for (const h of body.hands) if (h && Math.hypot(h.X - B.X, h.Y - B.Y) - B.R < 0.5 * S) near++;
-    this.near = near;
+    let near = 0, nearHand = -1;
+    if (B) body.hands.forEach((h, i) => { if (h && Math.hypot(h.X - B.X, h.Y - B.Y) - B.R < 0.5 * S) { near++; nearHand = i; } });
+    // the ball is hidden (hands and body cover it a lot): two hands together in front of the body,
+    // with the ball seen recently, means it is being held
+    let virt = null;
+    if (!B && this.ball && t - this.ball.t < 2.5) {
+      const [h0, h1] = body.hands;
+      if (h0 && h1 && Math.hypot(h0.X - h1.X, h0.Y - h1.Y) < 0.75 * S) {
+        const my = (h0.Y + h1.Y) / 2;
+        // chest / belly height only: in a side view, hands hanging at the hips overlap without holding anything
+        if (my > body.shY - 0.6 * S && my < body.hipY - 0.15 * S) { virt = { X: (h0.X + h1.X) / 2, Y: my, R: 0.25 * S }; near = 2; }
+      }
+    }
+    this.near = near; this.virtual = !!virt;
     if (near) { this.lastHandT = t; if (B) this.handBallY = B.Y; }
+    if (near === 1 && B && B.Y > body.hipY - 0.3 * S) this.dribbleHand = nearHand;
 
-    if (live) this.possession(B, near, body, dt, t);
+    if (live) { this.possession(B || virt, near, body, dt, t, !!virt); this.pumps(body, t, dt, live); }
     this.trackShot(B, hoop, aspect);
     return ev;
   }
@@ -183,20 +196,25 @@ export class Ref {
     }
   }
 
-  possession(B, near, body, dt, t) {
+  possession(B, near, body, dt, t, virt) {
     const S = this.S;
     if (B) {
-      const speed = Math.hypot(this.vx, this.vy);
+      this.hiddenAcc = 0;
+      const speed = virt ? 0 : Math.hypot(this.vx, this.vy);
       if (near >= 2) this.holdAcc += dt;
-      else if (near === 1 && speed < 1.5 * S) this.holdAcc += dt * 0.5;
+      else if (near === 1 && speed < 1.5 * S) this.holdAcc += dt * 0.35; // one hand: ~0.6 s of a still ball (palming / carrying)
       else if (near === 0) this.holdAcc = 0;
-      if (!this.held && this.holdAcc >= 0.2 && !this.shot) this.gather(t);
+      if (!this.held && this.holdAcc >= (virt ? 0.3 : 0.2) && !this.shot) this.gather(t);
       if (this.held) {
         if (near === 0) { this.sepAcc += dt; if (this.sepAcc >= 0.1) this.release(t); } else this.sepAcc = 0;
       }
-      if (!this.held) this.freeBall(B, body, t, dt);
+      if (!this.held && !virt) this.freeBall(B, body, t, dt);
+    } else if (this.held) {
+      // hidden while held: usually still in the hands (under an arm, behind the body). But if the
+      // hands are apart and it stays hidden, it most likely went back to dribbling out of view.
+      this.hiddenAcc = (this.hiddenAcc || 0) + dt;
+      if (this.hiddenAcc > 0.7) { this.held = false; this.holdAcc = 0; this.releaseT = t; this.bounceSinceRelease = false; this.saved = null; }
     }
-    // (ball hidden while held = still held: hands and body often cover it)
 
     if (this.dribbling && !this.held && t - this.lastBounceT > 1.6) {
       // the dribble died without a pick-up: a lost ball, which resets the possession
@@ -232,13 +250,17 @@ export class Ref {
   freeBall(B, body, t, dt) {
     const S = this.S;
     // shot: soon after leaving the hands the ball is above the shoulders and has risen well above where the hands had it
-    if (!this.shot && t - this.releaseT < 0.8 && B.Y < body.shY - 0.2 * S && B.Y < this.handBallY - 0.4 * S && this.vy < 0.5 * S) { this.startShot(B, t); return; }
-    if (this.vy > 1.2 * S && !this.desc) { this.desc = true; this.descMaxY = B.Y; }
+    if (!this.shot && t - this.releaseT < 0.8 && B.Y < body.shY - 0.2 * S && (B.Y < this.handBallY - 0.15 * S || this.vy < -1.5 * S) && this.vy < 0.5 * S) { this.startShot(B, t); return; }
+    if (this.vy > 1.2 * S && !this.desc) { this.desc = true; this.descMaxY = B.Y; this.descN = 0; }
     if (this.desc) {
-      this.descMaxY = Math.max(this.descMaxY, B.Y);
+      this.descMaxY = Math.max(this.descMaxY, B.Y); this.descN++;
       if (this.vy < -1.2 * S) {
         this.desc = false;
-        if (this.descMaxY > body.hipY + 0.15 * S && t - this.lastHandT < 1.2 && !this.shot) this.bounce(t);
+        if (this.descMaxY > body.hipY + 0.15 * S && t - this.lastHandT < 1.2 && !this.shot) {
+          let bi = -1, bd = 1e9; body.hands.forEach((h, i) => { if (h && Math.abs(h.X - B.X) < bd) { bd = Math.abs(h.X - B.X); bi = i; } });
+          if (bi >= 0 && bd < 0.8 * S) this.dribbleHand = bi;
+          this.bounce(t, 'ball');
+        }
       }
     }
     const far = Math.hypot(B.X - body.hip.X, B.Y - body.hip.Y) > 3 * S;
@@ -253,13 +275,63 @@ export class Ref {
     } else this.farAcc = 0;
   }
 
-  bounce(t) {
+  // a dribble seen two ways: the ball bouncing ('ball') or the dribbling hand pumping ('hand', used
+  // when the ball is hidden or blurred). One dribble seen both ways within 0.3 s counts once.
+  bounce(t, src = 'ball') {
+    const L = this.lastDr;
+    if (L && t - L.t < 0.3 && L.src !== src && !L.merged) { L.merged = true; return; }
+    if (L && t - L.t < 0.18) return;
+    if (this.pickedUp) {
+      // only a bounce actually seen can call a double dribble (fewer wrong calls)
+      // ...and only one seen falling over a few frames
+      if (src === 'ball' && this.descN >= 3) { this.bounceSinceRelease = true; this.saved = null; this.call('double', 'Dribbled again after picking it up'); }
+      return;
+    }
     this.bounceSinceRelease = true; this.saved = null;
-    if (this.pickedUp) { this.call('double', 'Dribbled again after picking it up'); return; }
     if (this.cleanPending) { this.cleanPending = false; this.ev.push({ type: 'clean', how: 'dribble' }); }
-    this.hasDribbled = true; this.dribbling = true; this.lastBounceT = t;
+    this.hasDribbled = true; this.dribbling = true; this.lastBounceT = t; this.lastDr = { t, src };
     this.streak++; this.totalDribbles++;
-    this.ev.push({ type: 'dribble', streak: this.streak, total: this.totalDribbles });
+    this.ev.push({ type: 'dribble', streak: this.streak, total: this.totalDribbles, src });
+  }
+
+  // the dribbling hand going down and back up, mostly vertically, between the shoulders and the knees
+  pumps(body, t, dt, live) {
+    const S = this.S;
+    this.hp ||= [{}, {}];
+    body.hands.forEach((h, i) => {
+      const st = this.hp[i];
+      if (!h) { st.y = null; return; }
+      if (st.y == null) { Object.assign(st, { y: h.Y, x: h.X, v: 0, dir: 1, lowY: h.Y, lowX: h.X, highY: h.Y, highX: h.X }); return; }
+      const py = st.y;
+      st.y += (h.Y - st.y) * 0.6; st.x += (h.X - st.x) * 0.6;
+      st.v = st.v * 0.4 + ((st.y - py) / dt) * 0.6;
+      if (st.dir > 0) {
+        if (st.y > st.lowY) { st.lowY = st.y; st.lowX = st.x; }
+        if (st.lowY - st.y > 0.06 * S && st.v < -0.5 * S) {
+          const amp = st.lowY - st.highY, dx = Math.abs(st.lowX - st.highX);
+          if (amp > 0.13 * S && amp > dx * 1.1 && st.highY > body.shY - 0.1 * S && st.lowY < body.hipY + 1.2 * S) this.pump(i, t, live);
+          st.dir = -1; st.highY = st.y; st.highX = st.x;
+        }
+      } else {
+        if (st.y < st.highY) { st.highY = st.y; st.highX = st.x; }
+        if (st.y - st.highY > 0.06 * S && st.v > 0.5 * S) { st.dir = 1; st.lowY = st.y; st.lowX = st.x; }
+      }
+    });
+  }
+  pump(hand, t, live) {
+    if (!live || this.held || this.shot || hand !== this.dribbleHand) return;
+    // only while dribbling, or right after the ball was seen low by that hand
+    const ballLow = this.ball && t - this.ball.t < 0.8 && this.body && this.ball.Y > this.body.hipY - 0.2 * this.S;
+    if (!this.dribbling && !ballLow) return;
+    if (this.dribbling && t - this.lastBounceT > 1.4) return;
+    this.bounce(t, 'hand');
+  }
+
+  // game mode: someone else has the ball now
+  loseBall() {
+    if (!(this.held || this.dribbling || this.hasDribbled || this.pickedUp)) return;
+    this.endStreak('lost');
+    this.clearPossession();
   }
 
   call(kind, why) {

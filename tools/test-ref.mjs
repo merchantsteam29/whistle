@@ -36,6 +36,20 @@ const dribble = (n, period = 0.5) => ({
     st.ball = { X: hand.X, Y: lerp(hand.Y + R + 0.005, FLOOR - R, tri) };
   },
 });
+// a real dribble: the hand pushes down and comes back up with the ball. hide = the ball is only
+// seen near the hand (it is behind the body / blurred for the rest of the bounce)
+const dribblePump = (n, period = 0.5, hide = false) => ({
+  dur: n * period,
+  fn(st, u) {
+    const p = ((u * n) % 1), tri = 1 - Math.abs(2 * p - 1);
+    const hand = { X: st.hipX + 0.13, Y: HIPY + 0.02 + 0.09 * Math.max(0, Math.sin(2 * Math.PI * p)) };
+    st.hands[1] = hand; st.hands[0] = { X: st.hipX - 0.1, Y: HIPY + 0.05 };
+    st.ball = hide && p > 0.12 && p < 0.88 ? null : { X: hand.X, Y: lerp(HIPY + 0.02 + R + 0.005, FLOOR - R, tri) };
+  },
+});
+// both hands together with the ball hidden between them (most real pick-ups)
+const holdHidden = (dur) => ({ dur, fn(st) { st.ball = null; const c = { X: st.hipX, Y: SHY + 0.1 }; st.hands = [{ X: c.X - 0.04, Y: c.Y }, { X: c.X + 0.04, Y: c.Y }]; } });
+const stepHidden = (foot) => { const a = step(foot); return { dur: a.dur, fn(st, u, t, total) { a.fn(st, u, t, total); st.ball = null; } }; };
 // move the ball (and hands) to the chest with both hands
 const pickUp = (dur = 0.25) => {
   let from;
@@ -141,6 +155,10 @@ const results = [
   run('beginner mode (3 steps allowed): 3 steps = legal', [wait(0.5), dribbleWalk(5), pickUp(0.2), step(1, 0.12, 0.25, 0.05), step(0, 0.12, 0.25, 0.05), step(1, 0.12, 0.25, 0.05), wait(0.5)], { opts: { stepsAllowed: 3 }, expect: { 'violation:travel': 0 } }),
   run('walking while dribbling = legal', [wait(0.5), dribbleWalk(8)], { expect: { 'violation:travel': 0, dribble: [6, 9] } }),
   run('catch and walk without dribbling = TRAVEL', [wait(0.5), hold(0.6), step(1), step(0), step(1), step(0)], { expect: { 'violation:travel': 1, 'violation:double': 0 } }),
+  run('dribble with the ball hidden most of each bounce (hand pumps count)', [wait(0.5), dribblePump(12, 0.5, true)], { expect: { dribble: [10, 12], 'violation:double': 0 } }),
+  run('dribble fully visible + hand pumping: no double counting', [wait(0.5), dribblePump(12, 0.5, false)], { expect: { dribble: [11, 12] } }),
+  run('fast dribble (3 per second), hidden', [wait(0.5), dribblePump(15, 0.33, true)], { expect: { dribble: [12, 15] } }),
+  run('pick up with the ball hidden in both hands, walk = TRAVEL', [wait(0.5), dribblePump(4, 0.5, true), holdHidden(0.6), stepHidden(1), stepHidden(0), stepHidden(1), stepHidden(0)], { expect: { 'violation:travel': 1, 'violation:double': 0 } }),
   run('holding still 6 s with shaky tracking = no call', [wait(0.5), dribble(3), pickUp(), hold(6)], { jitter: 3, expect: { 'violation:travel': 0, step: 0 } }),
   run('dribbling 20x with shaky tracking', [wait(0.5), dribble(20)], { jitter: 3, expect: { dribble: [18, 20], 'violation:travel': 0, 'violation:double': 0 } }),
 ];

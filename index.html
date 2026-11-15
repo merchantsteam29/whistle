@@ -230,6 +230,41 @@
   .help .sig { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 600px) { .help .sig { grid-template-columns: 1fr; } }
   kbd { background: #0b1424; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
+
+  /* --- game mode --- */
+  .gameboard { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: stretch; background: rgba(8,13,24,.92); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; max-width: calc(100% - 20px); }
+  .gb-team { display: flex; align-items: center; gap: 10px; padding: 6px 14px; min-width: 150px; }
+  .gb-team.away { flex-direction: row-reverse; text-align: right; }
+  .gb-team .nm { font: 700 14px var(--display); letter-spacing: .14em; text-transform: uppercase; line-height: 1.1; }
+  .gb-team .nm small { display: block; font: 600 11px var(--body); letter-spacing: 0; text-transform: none; color: var(--dim); }
+  .gb-team .pts { font: 800 46px/1 var(--display); font-variant-numeric: tabular-nums; min-width: 1.2em; text-align: center; }
+  .gb-team .pa { width: 0; height: 0; border: 7px solid transparent; opacity: 0; }
+  .gb-team.home .pa { border-right-color: var(--gold); }
+  .gb-team.away .pa { border-left-color: var(--gold); }
+  .gb-team.has .pa { opacity: 1; }
+  .gb-mid { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px 12px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .gb-mid b { font: 800 22px/1 var(--display); color: var(--gold); font-variant-numeric: tabular-nums; }
+  .gb-mid span { font: 700 10px var(--display); letter-spacing: .18em; color: var(--dim); }
+  .bonus { display: inline-block; font: 800 10px var(--display); letter-spacing: .12em; background: var(--red); color: #fff; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+  @media (max-width: 640px) { .gb-team { min-width: 0; padding: 4px 8px; gap: 6px; } .gb-team .pts { font-size: 32px; } .gb-team .nm { font-size: 11px; } }
+  #tags { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  .ptag { position: absolute; transform: translate(-50%, -100%); padding: 3px 9px; border-radius: 7px; font: 700 14px var(--display); letter-spacing: .06em; white-space: nowrap; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .ptag i { font-style: normal; opacity: .85; font-weight: 600; margin-left: 5px; }
+  .ptag.ball { outline: 2px solid var(--gold); }
+  .refpad { position: absolute; right: 12px; bottom: 72px; z-index: 5; background: rgba(10,17,31,.96); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; grid-template-columns: auto repeat(4, auto); gap: 6px; align-items: center; }
+  .refpad b { font: 700 13px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding-right: 4px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex: none; }
+  .seg button { border: 0; background: var(--panel2); padding: 8px 14px; font-weight: 600; }
+  .seg button.on { background: var(--orange); color: #1a0d02; }
+  .roster { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+  .roster h4 { margin: 0 0 6px; font: 800 18px var(--display); letter-spacing: .1em; }
+  .roster select { width: 100%; margin-bottom: 6px; }
+  table.box { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .box th { text-align: right; font: 700 11px var(--display); letter-spacing: .14em; color: var(--dim); padding: 6px; border-bottom: 1px solid var(--line); }
+  .box td { text-align: right; padding: 8px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .box th:first-child, .box td:first-child { text-align: left; }
+  .box tr.tot td { font-weight: 700; }
+  .box .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 </style>
 </head>
@@ -279,6 +314,16 @@
     <div class="sb"><b id="sbXP">0</b><span>XP</span></div>
   </div>
 
+  <div class="gameboard hidden" id="gameboard">
+    <div class="gb-team home" id="gbHome"><div class="nm"><span id="gbHomeName">HOME</span><small id="gbHomeFouls">Fouls 0</small></div><div class="pts" id="gbHomeScore">0</div><div class="pa"></div></div>
+    <div class="gb-mid"><b id="gbClock">0:00</b><span id="gbTo">TO 11</span></div>
+    <div class="gb-team away" id="gbAway"><div class="nm"><span id="gbAwayName">AWAY</span><small id="gbAwayFouls">Fouls 0</small></div><div class="pts" id="gbAwayScore">0</div><div class="pa"></div></div>
+  </div>
+  <div id="tags"></div>
+  <div class="refpad hidden" id="refPad">
+    <b>Home</b><button class="btn sm" data-pts="0,1">+1</button><button class="btn sm" data-pts="0,2">+2</button><button class="btn sm" data-pts="0,3">+3</button><button class="btn sm" data-foul="0">Foul</button>
+    <b>Away</b><button class="btn sm" data-pts="1,1">+1</button><button class="btn sm" data-pts="1,2">+2</button><button class="btn sm" data-pts="1,3">+3</button><button class="btn sm" data-foul="1">Foul</button>
+  </div>
   <div class="poss hidden" id="poss">
     <div class="pill" id="pill"><i></i><span id="pillTxt">Looking for player</span></div>
     <div class="pill hidden" id="stepsPill"><span id="stepsTxt">Steps</span><div class="feet" id="feet"></div></div>
@@ -291,11 +336,14 @@
 
   <div class="setup" id="setup">
     <h3>Set up the court</h3>
-    <div class="chk" id="chkBody"><div class="dot">1</div><div><b>Whole body in view</b><span id="chkBodyTxt">Stand 3 to 5 m from the camera, head to feet in the picture.</span></div></div>
+    <div class="chk" id="chkBody"><div class="dot">1</div><div><b id="chkBodyTitle">Whole body in view</b><span id="chkBodyTxt">Stand 3 to 5 m from the camera, head to feet in the picture.</span></div></div>
     <div class="chk" id="chkBall"><div class="dot">2</div><div><b>Tap the ball</b><span id="chkBallTxt">Hold the ball up and tap it on screen so WHISTLE learns its colour.</span>
       <div class="row"><button class="btn sm" id="ballDefault">Use standard orange</button></div></div></div>
     <div class="chk" id="chkHoop"><div class="dot">3</div><div><b>Mark the hoop <span style="color:var(--faint)">(optional)</span></b><span id="chkHoopTxt">For auto-scored shots: tap the left edge of the rim, then the right edge.</span>
       <div class="row"><button class="btn sm" id="hoopMark">Mark hoop</button><button class="btn sm ghost" id="hoopClear">No hoop</button></div></div></div>
+    <div class="chk hidden" id="chkThree"><div class="dot">4</div><div><b>3-point line <span style="color:var(--faint)">(optional)</span></b><span id="chkThreeTxt">Tap the floor where the 3-point line is. Makes from further out count 3.</span>
+      <div class="row"><button class="btn sm" id="threeMark">Mark 3-pt line</button><button class="btn sm ghost hidden" id="threeClear">No 3s</button></div></div></div>
+    <p style="margin:10px 0 0;font-size:13px;color:var(--dim)">No court right now? <button class="btn sm ghost" id="pickVideo" style="padding:4px 8px">Ref a recorded video</button><input type="file" id="videoFile" accept="video/*" hidden></p>
     <button class="btn primary big go" id="btnGo">Tip off</button>
   </div>
 
@@ -309,6 +357,7 @@
     <div class="sp"></div>
     <button class="btn hidden" id="cWave" title="Wave off the last call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="t">No call</span></button>
     <button class="btn hidden" id="cFix" title="Flip the last shot between made and missed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg><span class="t" id="cFixT">Fix shot</span></button>
+    <button class="btn hidden" id="cRef" title="Score and fouls by hand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="14" r="6"/><path d="M13 10h8v4h-4M6 5 4 2"/></svg><span class="t">Ref</span></button>
     <button class="btn hidden" id="cAddShot" title="Count a shot it missed"><span>+ Shot</span></button>
     <button class="btn end hidden" id="cEnd">End</button>
   </div>
@@ -346,7 +395,9 @@
       <p class="label">Tracking</p>
       <div class="field"><div><b>Body tracking</b><span>Accurate is better from far away but needs a faster device.</span></div>
         <select id="setQuality"><option value="fast">Fast</option><option value="accurate">Accurate</option></select></div>
+      <div class="field"><div><b>AI ball finder <span style="color:var(--faint)">(experimental)</span></b><span>An extra AI check for sharp, clearly visible balls. It is slow and misses blurry balls, so it is off by default. Any-colour balls are already found by colour + motion.</span></div><label class="sw"><input type="checkbox" id="setAI"><i></i></label></div>
       <div class="field"><div><b>Ball colour sensitivity</b><span>Raise it if the ball keeps getting lost. Lower it if it tracks shirts or skin.</span></div><input type="range" id="setSens" min="0.6" max="1.8" step="0.05"></div>
+      <div class="field"><div><b>Tracking view</b><span>Shows what WHISTLE ignores (red: background spots) and where the AI looked. Handy when a call seems wrong.</span></div><label class="sw"><input type="checkbox" id="setTrack"><i></i></label></div>
       <div class="field"><div><b>Show skeleton</b><span>Draws the tracked body and ball on the video</span></div><label class="sw"><input type="checkbox" id="setSkeleton"><i></i></label></div>
       <div class="field"><div><b>Mirror front camera</b><span>Like a mirror, so moving left looks left</span></div><label class="sw"><input type="checkbox" id="setMirror"><i></i></label></div>
       <div class="field"><div><b>Ball colour</b><span id="setBallTxt">Standard orange</span></div><button class="btn sm" id="setBallReset">Reset</button></div>
@@ -365,13 +416,23 @@
         <li>Good light helps a lot. Avoid a bright window behind the player.</li>
         <li>One player in view at a time. It follows whoever it sees best.</li>
         <li>For auto-scored shots, put the camera <b>off to the side</b> so the hoop and the player are both in the picture, then mark the rim.</li>
-        <li>Tap the ball once in setup. It learns that ball's colour. Orange basketballs work best.</li>
+        <li>Tap the ball once in setup. It learns that ball's colour, so any coloured ball works. White or grey balls are found by their movement instead.</li>
+        <li>No court handy? <b>Ref a recorded video</b> in setup runs a clip from your phone through the ref, just like the camera.</li>
       </ol>
       <h3>The calls</h3>
       <div class="sig">
         <div class="card" style="background:var(--panel2)"><b>TRAVELING</b><p>Too many steps holding the ball. Picked up on the move: 2 steps allowed (3 in Beginner). Picked up standing still: your first step sets the other foot as your <b>pivot</b>. Move the pivot and it's a travel.</p></div>
         <div class="card" style="background:var(--panel2)"><b>DOUBLE DRIBBLE</b><p>You dribbled, picked the ball up, then started dribbling again. Once you pick it up, pass or shoot.</p></div>
       </div>
+      <h3>Game mode (1v1 / 2v2)</h3>
+      <p>Everyone plays in front of one camera. HOME starts on the left, AWAY on the right, and WHISTLE keeps track of who is who (shirt colours help). Mark the hoop and the 3-point line in setup for automatic 2s and 3s.</p>
+      <div class="sig">
+        <div class="card" style="background:var(--panel2)"><b>REACH-IN</b><p>A defender's hand swipes into the ball handler's arm or body. Hitting the ball is a clean steal.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>HOLDING</b><p>A hand stays on the other player's arm or body.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>PUSHING</b><p>A hand on the body, then the other player gets shoved away. No travel is called on the player who got pushed.</p></div>
+        <div class="card" style="background:var(--panel2)"><b>OFFENSIVE FOUL</b><p>The player with the ball pushes off or holds the defender. The ball goes to the other team.</p></div>
+      </div>
+      <p>Fouls only count between players at the same distance from the camera, so standing behind someone isn't contact. A foul on a shot gives 2 free throws (3 behind the line). If the shot goes in anyway, it's an and-one. Team fouls past the bonus give 2 free throws, and a player who fouls out gives 2 free throws on every foul after that. The <b>Ref</b> button adds points or a foul by hand.</p>
       <p>A ref can miss a call, and so can a camera. Tap <b>No call</b> to wave off a wrong one. Tap <b>Fix shot</b> to flip the last shot between made and missed.</p>
       <h3>Points</h3>
       <ul>
@@ -387,6 +448,22 @@
     </div>
   </div>
 </section>
+
+<!-- game setup modal -->
+<div class="modal" id="mGame">
+  <div class="card" style="width:min(560px,100%)">
+    <div class="top" style="margin-bottom:12px"><h2 style="font-size:26px">Game setup</h2><button class="btn sm" id="mGameClose">Cancel</button></div>
+    <div class="field"><div><b>Format</b><span>Everyone plays in the camera view at once</span></div><div class="seg" id="gFormat"><button data-v="1v1">1 v 1</button><button data-v="2v2">2 v 2</button></div></div>
+    <div class="roster">
+      <div><h4 style="color:var(--orange)">HOME <span style="color:var(--faint);font-size:13px;letter-spacing:.06em">starts on the left</span></h4><div id="gHome"></div></div>
+      <div><h4 style="color:var(--blue)">AWAY <span style="color:var(--faint);font-size:13px;letter-spacing:.06em">starts on the right</span></h4><div id="gAway"></div></div>
+    </div>
+    <div class="field"><div><b>Game to</b></div><select id="gTo"><option value="7">7</option><option value="11">11</option><option value="15">15</option><option value="21">21</option><option value="0">No limit</option></select></div>
+    <div class="field"><div><b>Foul out</b><span>Personal fouls before a player is out. After that, every foul they make is 2 free throws.</span></div><select id="gFoulOut"><option value="5">5 fouls</option><option value="6">6 fouls</option><option value="0">Off</option></select></div>
+    <div class="field"><div><b>Bonus</b><span>From this many team fouls on, every foul is 2 free throws</span></div><select id="gBonus"><option value="4">4 team fouls</option><option value="5">5 team fouls</option><option value="7">7 team fouls</option><option value="0">Off</option></select></div>
+    <button class="btn primary big" id="gGo" style="margin-top:12px">Set up the court</button>
+  </div>
+</div>
 
 <!-- players modal -->
 <div class="modal" id="mPlayers">
